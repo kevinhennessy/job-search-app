@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# DB + secrets — NEVER commit
+*.db
+*.sqlite
+*.sqlite3
+jobsearch.db
+.env
+*.env
+credentials.json
+token.json
+*token*.json
+client_secret*.json
+*.key
+*.pem
+
+# Logs (can contain email / job data — keep out)
+*.log
+logs/
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# Single-port production build (regenerable)
+backend/static/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db

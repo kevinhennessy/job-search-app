@@ -1,0 +1,55 @@
+"""API request/response schemas (kept separate from DB tables)."""
+
+from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel
+
+
+class JobOut(BaseModel):
+    """A job merged with its user state (status + note)."""
+    id: str                    # == Job.stable_id
+    title: str
+    company: str
+    location: str
+    salary: Optional[str] = None
+    source: str
+    url: str
+    snippet: str
+    category: str
+    reason: Optional[str] = None
+    claude_reason: Optional[str] = None
+    warning: bool = False
+    status: Optional[str] = None   # from JobState
+    note: str = ""                 # from JobState
+    first_seen: datetime
+    last_seen: datetime
+    last_alert_date: Optional[datetime] = None
+
+
+class JobPatch(BaseModel):
+    """Partial update to a job's user state. Either field may be present."""
+    status: Optional[str] = None   # applied | pass | later | closed | "" (clear) | None
+    note: Optional[str] = None
+
+
+class StatsOut(BaseModel):
+    pursue: int
+    review: int
+    stretch: int
+    passed: int
+    skipped: int
+
+
+class RunOut(BaseModel):
+    id: int
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    hours_back: int
+    status: str
+    error: Optional[str] = None
+    n_pursue: int
+    n_review: int
+    n_stretch: int = 0
+    n_skipped: int
+    n_emails: int

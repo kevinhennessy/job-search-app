@@ -1,0 +1,13 @@
+# Web app
+fastapi>=0.110
+uvicorn[standard]>=0.29
+sqlmodel>=0.0.16
+pydantic>=2.6
+
+# Triage engine (carried over from the original triage.py)
+google-api-python-client>=2.0
+google-auth-oauthlib>=1.0
+google-auth-httplib2>=0.2
+beautifulsoup4>=4.12
+lxml>=5.0
+requests>=2.31
