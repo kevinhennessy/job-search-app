@@ -58,11 +58,34 @@ def _resolve_ncworks_url(tracking_url: str, title: str, company: str) -> str:
             headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
         )
         final = r.url
-        if "JobSearchCriteriaQuick" in final or "ncworks.gov" not in final:
+        if "JobSearchCriteriaQuick" in final or "SearchCriteria" in final:
             return _ncworks_search_url(title, company)
         return final
     except Exception:
         return _ncworks_search_url(title, company)
+
+
+_AGGREGATOR_DOMAINS = (
+    "indeed.com",
+    "linkedin.com",
+    "ziprecruiter.com",
+    "glassdoor.com",
+    "monster.com",
+    "simplyhired.com",
+    "talent.com",
+    "google.com",
+)
+
+
+def _is_aggregator_url(url: Optional[str]) -> bool:
+    if not url:
+        return False
+    url_lower = url.lower()
+    return any(domain in url_lower for domain in _AGGREGATOR_DOMAINS)
+
+
+def _is_ncworks_url(url: Optional[str]) -> bool:
+    return bool(url) and "ncworks.gov" in url.lower()
 
 
 def _classify_reason_fields(reason: Optional[str]) -> tuple[Optional[str], Optional[str], bool]:
@@ -212,11 +235,18 @@ def _process_and_persist(session: Session, all_jobs: list, run: Run,
         used = resolve_for_jobs(session, pursue, budget)
         if used:
             legacy.log.info("Tavily JD lookups this run: %d", used)
-        # Link cards to the real posting Tavily found, replacing the dead
-        # NCWorks redirect. Done before eval so demoted roles keep the link too.
+        # Link cards to the real posting Tavily found, but only when the
+        # current link is weak (missing/NCWorks/aggregator) and the JD
+        # resolver's page isn't itself an aggregator — otherwise a good
+        # direct posting link could get downgraded. Done before eval so
+        # demoted roles keep the link too.
         for job, _r in pursue:
-            if job.get("jd_url"):
-                job["url"] = job["jd_url"]
+            jd_url = job.get("jd_url")
+            if not jd_url or _is_aggregator_url(jd_url):
+                continue
+            current_url = job.get("url") or ""
+            if not current_url or _is_ncworks_url(current_url) or _is_aggregator_url(current_url):
+                job["url"] = jd_url
 
     # --- Claude evaluation (demotes poor-fit Pursue -> Review) ---
     if not skip_claude:

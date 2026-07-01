@@ -142,6 +142,16 @@ dependency). Keep that pattern if adding new LLM calls.
   `triage.py` has the same parser and would want the same guard if run.
 - **`JD_BLOCKED_SOURCES`** (e.g. NCWorks, Indeed) get snippet-based evaluation with a
   warning tag — don't attempt a full JD fetch for them.
+- **NCWorks URL resolution keeps off-site redirects.** `_resolve_ncworks_url` follows
+  the NCWorks tracking link and keeps wherever it lands — including off-`ncworks.gov`
+  redirects to the employer's real ATS (e.g. `unc.peopleadmin.com`) — since that's the
+  actual posting. It only falls back to the NCWorks search URL when the redirect lands
+  on a search/criteria page or the request fails. Relatedly, `_process_and_persist`
+  only overwrites `job["url"]` with `jd_url` when the current URL is weak (empty,
+  NCWorks, or an aggregator) and `jd_url` isn't itself an aggregator — otherwise a good
+  direct posting link could get clobbered by whatever page the JD resolver pulled text
+  from. Like all evaluator/engine changes, this only affects jobs picked up on the
+  *next* Run triage / Scan, not already-persisted rows.
 - **Gmail OAuth must be in Production** (not Testing) in Google Cloud Console, or the
   token expires under Google's 2SV enforcement.
 - **The standalone scripts** (`triage.py`, `scan.py`) predate this app and evolve
