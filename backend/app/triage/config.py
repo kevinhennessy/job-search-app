@@ -355,6 +355,7 @@ SKIP_COMPANIES = [
     "maxonic",
     "sean e. merryman",
     "spectraforce",      # staffing agency, undisclosed end clients
+    "us tech solutions",   # staffing agency, undisclosed end clients
 ]
 
 # ---------------------------------------------------------------------------
