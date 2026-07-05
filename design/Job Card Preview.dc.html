@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+/* Ported from the original triage.py digest design — serif cards, mono meta,
+   light/dark via prefers-color-scheme. Tweaked for a React app shell.
+   Visual polish pass: same tokens/classes/structure, refined depth, rhythm, type stacks. */
+
+:root {
+  --pursue: #1a5c38; --pursue-bg: #eaf5ef; --pursue-border: #a8d8bc;
+  --review: #7a4f00; --review-bg: #fef8ec; --review-border: #f5d98a;
+  --stretch: #4a3a8a; --stretch-bg: #f0edfa; --stretch-border: #c4b8e8;
+  --passed-bg: #f0f0ee; --passed-border: #ccc; --passed-text: #6b6b6b;
+  --skipped-bg: #f7f7f5; --skipped-border: #ddddd8;
+  --applied-bg: #e8f0fb; --applied-border: #a8c0e8; --applied-text: #1a4a8a;
+  --closed-bg: #fdf0f0; --closed-border: #e8a8a8; --closed-text: #8a1a1a;
+  --font: 'Georgia', 'Times New Roman', serif;
+  --mono: 'SF Mono', 'Courier New', ui-monospace, monospace;
+  --text: #1a1a18; --muted: #666660; --bg: #fafaf8; --card-bg: #fff; --border: #e0e0da;
+  --shadow-sm: 0 1px 2px rgba(20, 20, 15, .05);
+  --shadow-card: 0 1px 2px rgba(20, 20, 15, .04), 0 2px 10px rgba(20, 20, 15, .05);
+  --shadow-card-hover: 0 2px 4px rgba(20, 20, 15, .06), 0 8px 20px rgba(20, 20, 15, .08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pursue: #6dd4a0; --pursue-bg: #0d2e1e; --pursue-border: #1e5c3a;
+    --review: #f5d98a; --review-bg: #2a1f00; --review-border: #5c4400;
+    --stretch: #b8a8f0; --stretch-bg: #1a1530; --stretch-border: #3a2e6c;
+    --passed-bg: #1a1a18; --passed-border: #333; --passed-text: #888;
+    --skipped-bg: #1e1e1c; --skipped-border: #333330;
+    --applied-bg: #0d1e33; --applied-border: #1e3a5c; --applied-text: #7aafee;
+    --closed-bg: #2e0d0d; --closed-border: #5c1e1e; --closed-text: #ee7a7a;
+    --text: #e8e8e4; --muted: #999992; --bg: #111110; --card-bg: #1a1a18; --border: #2e2e2a;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, .25), 0 2px 12px rgba(0, 0, 0, .3);
+    --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, .3), 0 10px 24px rgba(0, 0, 0, .4);
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font); background: var(--bg); color: var(--text);
+  font-size: 15px; line-height: 1.6;
+}
+.wrap { max-width: 860px; margin: 0 auto; padding: 2rem 1rem; }
+
+.header { border-bottom: 1px solid var(--border); padding-bottom: 1.4rem; margin-bottom: 1.75rem; }
+.header-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.header h1 { font-size: 1.7rem; font-weight: normal; letter-spacing: -.02em; }
+.meta { font-size: .78rem; color: var(--muted); font-family: var(--mono); margin-top: .45rem; letter-spacing: .01em; }
+.stats { display: flex; gap: 1.75rem; margin-top: 1.15rem; }
+.stat { font-size: .72rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.stat .num { font-size: 1.5rem; display: block; font-weight: bold; letter-spacing: -.02em; text-transform: none; margin-bottom: .1rem; }
+.stat.pursue .num { color: var(--pursue); }
+.stat.review .num { color: var(--review); }
+.stat.stretch .num { color: var(--stretch); }
+.stat.passed .num { color: var(--passed-text); }
+.stat.skipped .num { color: var(--muted); }
+
+.run-btn {
+  font-family: var(--mono); font-size: .74rem; padding: .5rem 1rem; border-radius: 6px;
+  border: 1px solid var(--pursue-border); background: var(--pursue-bg); color: var(--pursue);
+  cursor: pointer; font-weight: 600; letter-spacing: .01em; box-shadow: var(--shadow-sm); white-space: nowrap;
+  transition: transform .12s, box-shadow .12s, border-color .12s;
+}
+.run-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: var(--shadow-card); border-color: var(--pursue); }
+.run-btn:disabled { opacity: .5; cursor: default; box-shadow: none; }
+.run-actions { display: flex; gap: .6rem; flex-wrap: wrap; }
+.scan-btn { border-color: var(--stretch-border); background: var(--stretch-bg); color: var(--stretch); }
+.scan-btn:hover:not(:disabled) { border-color: var(--stretch); }
+.run-status { font-family: var(--mono); font-size: .72rem; color: var(--muted); margin-top: .55rem; }
+
+.filter-bar { display: flex; gap: .5rem; margin-bottom: 1.75rem; flex-wrap: wrap; }
+.filter-btn {
+  font-family: var(--mono); font-size: .71rem; padding: .35rem .85rem; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--muted); cursor: pointer;
+  transition: all .12s;
+}
+.filter-btn:hover { border-color: #aaa; color: var(--text); }
+.filter-btn.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+section { margin-bottom: 2.75rem; }
+.section-header { display: flex; align-items: baseline; gap: .75rem; margin-bottom: 1.1rem; cursor: pointer; user-select: none; padding-bottom: .5rem; border-bottom: 1px solid var(--border); }
+.section-header h2 { font-size: .74rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: .12em; font-weight: 600; }
+.section-header.pursue h2 { color: var(--pursue); }
+.section-header.review h2 { color: var(--review); }
+.section-header.stretch h2 { color: var(--stretch); }
+.section-header.passed h2 { color: var(--passed-text); }
+.section-header.skipped h2 { color: var(--muted); }
+.toggle { font-size: .74rem; color: var(--muted); font-family: var(--mono); transition: color .12s; }
+.toggle:hover { color: var(--text); }
+
+.card {
+  border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg);
+  padding: 1.15rem 1.35rem; margin-bottom: .85rem; box-shadow: var(--shadow-card);
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.card:hover { border-color: #bbb; box-shadow: var(--shadow-card-hover); transform: translateY(-1px); }
+.card.status-applied { border-left: 3px solid var(--applied-border); background: var(--applied-bg); }
+.card.status-pass { opacity: .55; border-left: 3px solid var(--passed-border); box-shadow: none; }
+.card.status-later { border-left: 3px solid var(--review-border); }
+.card.status-closed { opacity: .45; border-left: 3px solid var(--closed-border); background: var(--closed-bg); box-shadow: none; }
+
+.card-title { font-size: 1.05rem; font-weight: bold; color: var(--text); text-decoration: none; line-height: 1.35; letter-spacing: -.01em; }
+.card-title:hover { text-decoration: underline; }
+.card-title.no-link { cursor: default; }
+.company { font-size: .86rem; color: var(--muted); margin-top: .25rem; }
+.card-meta { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .75rem; align-items: center; }
+.pill { font-family: var(--mono); font-size: .68rem; font-weight: 600; padding: .22rem .62rem; border-radius: 999px; white-space: nowrap; letter-spacing: .01em; }
+.pill.location { background: var(--skipped-bg); color: var(--muted); border: 1px solid var(--skipped-border); }
+.pill.salary { background: var(--pursue-bg); color: var(--pursue); border: 1px solid var(--pursue-border); }
+.pill.source { background: var(--skipped-bg); color: var(--muted); border: 1px solid var(--skipped-border); }
+.pill.reason { background: var(--review-bg); color: var(--review); border: 1px solid var(--review-border); }
+.pill.warning { background: var(--review-bg); color: var(--review); border: 1px solid var(--review-border); font-weight: 700; }
+.pill.age { background: var(--skipped-bg); color: var(--muted); border: 1px solid var(--skipped-border); }
+.pill.age.stale { background: var(--review-bg); color: var(--review); border: 1px solid var(--review-border); font-weight: 700; }
+.stale-toggle { display: inline-flex; align-items: center; gap: .35rem; margin-left: auto; font-size: .8rem; color: var(--muted); cursor: pointer; }
+.stale-toggle input { cursor: pointer; }
+.snippet { font-size: .83rem; color: var(--muted); margin-top: .7rem; line-height: 1.55; font-style: italic; }
+.reason-note {
+  margin-top: .7rem;
+  font-size: .81rem;
+  line-height: 1.6;
+  color: var(--review);
+  background: var(--review-bg);
+  border: 1px solid var(--review-border);
+  border-radius: 6px;
+  padding: .55rem .75rem;
+  white-space: normal;
+}
+.reason-note.positive { color: var(--pursue); background: var(--pursue-bg); border-color: var(--pursue-border); }
+
+.actions { display: flex; gap: .5rem; margin-top: .9rem; padding-top: .75rem; border-top: 1px solid var(--border); flex-wrap: wrap; align-items: flex-start; }
+.btn { font-family: var(--mono); font-size: .69rem; font-weight: 600; padding: .3rem .7rem; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--muted); cursor: pointer; transition: all .12s; }
+.btn:hover { background: var(--skipped-bg); color: var(--text); border-color: #bbb; }
+.btn.active-applied { background: var(--applied-bg); color: var(--applied-text); border-color: var(--applied-border); }
+.btn.active-pass { background: var(--passed-bg); color: var(--passed-text); border-color: var(--passed-border); }
+.btn.active-later { background: var(--review-bg); color: var(--review); border-color: var(--review-border); }
+.btn.active-closed { background: var(--closed-bg); color: var(--closed-text); border-color: var(--closed-border); }
+
+.note-wrap { flex: 1; min-width: 200px; }
+.note-input { width: 100%; font-family: var(--mono); font-size: .72rem; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); color: var(--text); resize: vertical; min-height: 2.4rem; transition: border-color .12s, box-shadow .12s; }
+.note-input:focus { outline: none; border-color: var(--stretch-border); box-shadow: 0 0 0 3px var(--stretch-bg); }
+.note-saved { font-family: var(--mono); font-size: .65rem; color: var(--pursue); margin-top: .25rem; height: .9rem; transition: opacity .3s; }
+
+.empty { font-size: .85rem; color: var(--muted); font-style: italic; }
+</style>
+</helmet>
+<div className="wrap">
+  <div className="header">
+    <div className="header-top">
+      <div>
+        <h1>Job Triage</h1>
+        <div className="meta">last run · 2026-07-05 08:14 · 42 alerts scanned</div>
+      </div>
+      <div className="run-actions">
+        <button className="run-btn">run digest</button>
+        <button className="run-btn scan-btn">scan sources</button>
+      </div>
+    </div>
+    <div className="stats">
+      <div className="stat pursue"><span className="num">{{ counts.pursue }}</span>pursue</div>
+      <div className="stat review"><span className="num">{{ counts.review }}</span>review</div>
+      <div className="stat stretch"><span className="num">{{ counts.stretch }}</span>stretch</div>
+      <div className="stat passed"><span className="num">{{ counts.passed }}</span>passed</div>
+      <div className="stat skipped"><span className="num">{{ counts.skipped }}</span>skipped</div>
+    </div>
+  </div>
+
+  <div className="filter-bar">
+    <button className="filter-btn active">all</button>
+    <button className="filter-btn">open</button>
+    <button className="filter-btn">applied</button>
+    <button className="filter-btn">hide passed</button>
+  </div>
+
+  <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="4">
+    <section>
+      <div className="{{ sec.headerClass }}">
+        <h2>{{ sec.label }}</h2>
+        <span className="toggle">{{ sec.count }} · collapse</span>
+      </div>
+      <sc-for list="{{ sec.jobs }}" as="job" hint-placeholder-count="2">
+        <div className="{{ job.cardClass }}">
+          <a className="card-title" href="{{ job.url }}" target="_blank" rel="noreferrer">{{ job.title }}</a>
+          <div className="company">{{ job.company }}</div>
+          <div className="card-meta">
+            <sc-if value="{{ job.location }}"><span className="pill location">{{ job.location }}</span></sc-if>
+            <sc-if value="{{ job.salary }}"><span className="pill salary">{{ job.salary }}</span></sc-if>
+            <sc-if value="{{ job.source }}"><span className="pill source">{{ job.source }}</span></sc-if>
+            <sc-if value="{{ job.ageLabel }}"><span className="{{ job.ageClass }}">{{ job.ageLabel }}</span></sc-if>
+            <sc-if value="{{ job.warning }}"><span className="pill warning">⚠ snippet-only — verify manually</span></sc-if>
+          </div>
+          <sc-if value="{{ job.snippet }}"><div className="snippet">{{ job.snippet }}</div></sc-if>
+          <sc-if value="{{ job.showReason }}"><div className="{{ job.reasonClass }}">{{ job.reasonText }}</div></sc-if>
+          <div className="actions">
+            <sc-for list="{{ job.statusBtns }}" as="b" hint-placeholder-count="4">
+              <button className="{{ b.className }}" onClick="{{ b.onClick }}">{{ b.label }}</button>
+            </sc-for>
+            <div className="note-wrap">
+              <textarea className="note-input" placeholder="notes…" value="{{ job.note }}" onChange="{{ job.onNoteChange }}"></textarea>
+              <div className="note-saved">{{ job.saved }}</div>
+            </div>
+          </div>
+        </div>
+      </sc-for>
+    </section>
+  </sc-for>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const RAW_JOBS = [
+  { id: "1", category: "pursue", title: "Senior Product Designer", company: "Anchorage Digital", url: "#",
+    location: "Remote (US)", salary: "$150k–190k", source: "greenhouse", ageDays: 1,
+    snippet: "Own the design system for our custody platform end to end, from research to shipped component.",
+    reason: "Claude: Strong comp match, remote-first, design-system ownership rare at this seniority.", status: "", note: "" },
+  { id: "2", category: "pursue", title: "Staff Engineer, Payments", company: "Ramp", url: "#",
+    location: "New York, NY", salary: "$210k–260k", source: "lever", ageDays: 0,
+    snippet: "Lead architecture for a new cross-border settlement system handling 9-figure daily volume.",
+    reason: "Claude: Compensation exceeds target band, high-leverage scope.", status: "applied", note: "Recruiter screen booked Thu 2pm" },
+  { id: "3", category: "review", title: "Design Lead, Growth", company: "Notion", url: "#",
+    location: "San Francisco, CA", source: "greenhouse", ageDays: 18,
+    reason: "Claude: Strong brand fit but scope is growth-only, unclear IC-to-manager path.", status: "", note: "" },
+  { id: "4", category: "review", title: "Product Manager, Platform", company: "Vercel", url: "#",
+    location: "Remote", salary: "$160k–180k", source: "ashby", ageDays: 3, warning: true,
+    snippet: "role details truncated in source alert —", status: "", note: "" },
+  { id: "5", category: "stretch", title: "VP of Design", company: "Linear", url: "#",
+    location: "Remote", source: "linkedin", ageDays: 6,
+    reason: "Stretch: Title above current level, but small tight-knit team worth a shot.", status: "later", note: "" },
+  { id: "6", category: "passed", title: "UX Researcher", company: "Datadog", url: "#",
+    location: "New York, NY", source: "greenhouse", ageDays: 30,
+    status: "closed", note: "Not a fit — too research-heavy, no design ownership." },
+];
+
+const SECTION_DEFS = [
+  { key: "pursue", label: "Pursue" },
+  { key: "review", label: "Review" },
+  { key: "stretch", label: "Stretch" },
+  { key: "passed", label: "Passed" },
+];
+
+const STATUS_BTNS = [
+  { key: "applied", label: "applied" },
+  { key: "later", label: "review later" },
+  { key: "pass", label: "pass" },
+  { key: "closed", label: "closed" },
+];
+
+function stripReasonPrefix(reason) {
+  return reason.replace(/^(Stretch|Claude):\s*/, "");
+}
+
+function ageLabelFor(days) {
+  if (days === null || days === undefined) return "";
+  if (days <= 0) return "alerted today";
+  if (days === 1) return "alerted 1d ago";
+  return `alerted ${days}d ago`;
+}
+
+class Component extends DCLogic {
+  state = {
+    jobs: RAW_JOBS.map((j) => ({ ...j })),
+    savedFlags: {},
+  };
+
+  toggleStatus(id, key) {
+    this.setState((s) => ({
+      jobs: s.jobs.map((j) => (j.id === id ? { ...j, status: j.status === key ? "" : key } : j)),
+    }));
+  }
+
+  handleNote(id, val) {
+    const timers = (this._timers = this._timers || {});
+    this.setState((s) => ({ jobs: s.jobs.map((j) => (j.id === id ? { ...j, note: val } : j)) }));
+    if (timers[id]) clearTimeout(timers[id]);
+    timers[id] = setTimeout(() => {
+      this.setState((s) => ({ savedFlags: { ...s.savedFlags, [id]: "saved" } }));
+      setTimeout(() => {
+        this.setState((s) => ({ savedFlags: { ...s.savedFlags, [id]: "" } }));
+      }, 1500);
+    }, 600);
+  }
+
+  renderVals() {
+    const jobs = this.state.jobs;
+    const counts = {
+      pursue: jobs.filter((j) => j.category === "pursue").length,
+      review: jobs.filter((j) => j.category === "review").length,
+      stretch: jobs.filter((j) => j.category === "stretch").length,
+      passed: jobs.filter((j) => j.category === "passed").length,
+      skipped: 0,
+    };
+
+    const sections = SECTION_DEFS.map((def) => {
+      const secJobs = jobs.filter((j) => j.category === def.key);
+      return {
+        headerClass: `section-header ${def.key}`,
+        label: def.key === "passed" ? "Passed / Closed" : def.label,
+        count: secJobs.length,
+        jobs: secJobs.map((job) => {
+          const statusClass = job.status ? ` status-${job.status}` : "";
+          const ageDays = job.ageDays;
+          const ageLabel = ageLabelFor(ageDays);
+          const stale = ageDays !== null && ageDays > 14;
+          const showReason = !!job.reason && !job.warning;
+          return {
+            ...job,
+            cardClass: `card${statusClass}`,
+            ageLabel,
+            ageClass: `pill age${stale ? " stale" : ""}`,
+            showReason,
+            reasonClass: `reason-note${job.category === "pursue" ? " positive" : ""}`,
+            reasonText: job.reason ? stripReasonPrefix(job.reason) : "",
+            saved: this.state.savedFlags[job.id] || "",
+            onNoteChange: (e) => this.handleNote(job.id, e.target.value),
+            statusBtns: STATUS_BTNS.map((b) => ({
+              label: b.label,
+              className: `btn${job.status === b.key ? ` active-${b.key}` : ""}`,
+              onClick: () => this.toggleStatus(job.id, b.key),
+            })),
+          };
+        }),
+      };
+    });
+
+    return { counts, sections };
+  }
+}
+
+</script>
+</body>
+</html>
