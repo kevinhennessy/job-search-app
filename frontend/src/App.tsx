@@ -3,7 +3,7 @@ import { api, type Job, daysSince } from "./lib/api";
 import JobCard from "./components/JobCard";
 
 type Filter = "all" | "pending" | "applied" | "later" | "closed";
-type Section = "pursue" | "review" | "stretch" | "passed" | "skipped";
+type Section = "pursue" | "review" | "stretch" | "applied" | "passed" | "skipped";
 
 const FILTERS: Filter[] = ["all", "pending", "applied", "later", "closed"];
 const STALE_DAYS = 14;  // roles whose last alert is older than this are likely closed/filled
@@ -13,7 +13,7 @@ export default function App() {
   const [filter, setFilter] = useState<Filter>("pending");
   const [hideStale, setHideStale] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<Section, boolean>>({
-    pursue: false, review: false, stretch: false, passed: true, skipped: true,
+    pursue: false, review: false, stretch: false, applied: false, passed: true, skipped: true,
   });
   const [running, setRunning] = useState(false);
   const [runMsg, setRunMsg] = useState("");
@@ -27,12 +27,14 @@ export default function App() {
     refresh().catch((e) => setRunMsg(String(e)));
   }, [refresh]);
 
-  // --- buckets: pass AND closed are terminal -> archived together; the
-  //     active sections (pursue/review/stretch) hold only live roles ---
+  // --- buckets: pass AND closed are terminal -> archived together; applied
+  //     jobs move to their own section regardless of original category; the
+  //     remaining active sections (pursue/review/stretch) hold only live roles ---
   const buckets = useMemo(() => {
-    const out: Record<Section, Job[]> = { pursue: [], review: [], stretch: [], passed: [], skipped: [] };
+    const out: Record<Section, Job[]> = { pursue: [], review: [], stretch: [], applied: [], passed: [], skipped: [] };
     for (const job of jobs) {
       if (job.status === "pass" || job.status === "closed") out.passed.push(job);
+      else if (job.status === "applied") out.applied.push(job);
       else if (job.category === "pursue") out.pursue.push(job);
       else if (job.category === "review") out.review.push(job);
       else if (job.category === "stretch") out.stretch.push(job);
@@ -171,6 +173,7 @@ export default function App() {
           <div className="stat pursue"><span className="num">{buckets.pursue.length}</span>pursue</div>
           <div className="stat review"><span className="num">{buckets.review.length}</span>review</div>
           <div className="stat stretch"><span className="num">{buckets.stretch.length}</span>stretch</div>
+          <div className="stat applied"><span className="num">{buckets.applied.length}</span>applied</div>
           <div className="stat passed"><span className="num">{buckets.passed.length}</span>passed/closed</div>
           <div className="stat skipped"><span className="num">{buckets.skipped.length}</span>skipped</div>
         </div>
@@ -196,6 +199,7 @@ export default function App() {
       {renderSection("pursue", "Pursue")}
       {renderSection("review", "Review")}
       {renderSection("stretch", "Stretch — over-experienced, referral-worthy")}
+      {renderSection("applied", "Applied")}
       {renderSection("passed", "Passed / Closed")}
       {renderSection("skipped", "Skipped")}
     </div>

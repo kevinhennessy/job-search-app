@@ -42,6 +42,7 @@ body {
 .stat.pursue .num { color: var(--pursue); }
 .stat.review .num { color: var(--review); }
 .stat.stretch .num { color: var(--stretch); }
+.stat.applied .num { color: var(--applied-text); }
 .stat.passed .num { color: var(--passed-text); }
 .stat.skipped .num { color: var(--muted); }
 
@@ -68,6 +69,7 @@ section { margin-bottom: 2.5rem; }
 .section-header.pursue h2 { color: var(--pursue); }
 .section-header.review h2 { color: var(--review); }
 .section-header.stretch h2 { color: var(--stretch); }
+.section-header.applied h2 { color: var(--applied-text); }
 .section-header.passed h2 { color: var(--passed-text); }
 .section-header.skipped h2 { color: var(--muted); }
 .toggle { font-size: .75rem; color: var(--muted); font-family: var(--mono); }
