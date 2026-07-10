@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import settings
-from .api import jobs, runs
+from .api import fit, jobs, runs
 from .db import init_db
 
 app = FastAPI(title="Job Search Triage", version="0.1.0")
@@ -41,6 +41,7 @@ def health() -> dict:
 
 app.include_router(jobs.router)
 app.include_router(runs.router)
+app.include_router(fit.router)
 
 # Optional: serve a built frontend (backend/static) as a SPA at /.
 # Safe to leave in — it only mounts if the directory exists.

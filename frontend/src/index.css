@@ -143,3 +143,51 @@ section { margin-bottom: 2.75rem; }
 .note-saved { font-family: var(--mono); font-size: .65rem; color: var(--pursue); margin-top: .25rem; height: .9rem; transition: opacity .3s; }
 
 .empty { font-size: .85rem; color: var(--muted); font-style: italic; }
+
+/* --- Job Fit Evaluator --- */
+.fit-evaluator { margin-top: .5rem; }
+.fit-textarea {
+  width: 100%; min-height: 12rem; font-family: var(--mono); font-size: .8rem;
+  padding: .8rem 1rem; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card-bg); color: var(--text); resize: vertical; line-height: 1.5;
+  transition: border-color .12s, box-shadow .12s;
+}
+.fit-textarea:focus { outline: none; border-color: var(--stretch-border); box-shadow: 0 0 0 3px var(--stretch-bg); }
+.fit-actions { display: flex; align-items: center; gap: .9rem; margin-top: .85rem; }
+.fit-error { font-family: var(--mono); font-size: .78rem; color: var(--closed-text); }
+
+.fit-result { margin-top: 1.75rem; }
+
+.fit-verdict {
+  display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: 10px; padding: .9rem 1.1rem;
+  box-shadow: var(--shadow-card); margin-bottom: 1.25rem;
+}
+.fit-verdict-label { font-family: var(--mono); font-size: .85rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.fit-verdict-reason { font-size: .88rem; color: var(--muted); }
+.fit-verdict.verdict-apply { border-color: var(--pursue-border); background: var(--pursue-bg); }
+.fit-verdict.verdict-apply .fit-verdict-label { color: var(--pursue); }
+.fit-verdict.verdict-caution { border-color: var(--review-border); background: var(--review-bg); }
+.fit-verdict.verdict-caution .fit-verdict-label { color: var(--review); }
+.fit-verdict.verdict-skip { border-color: var(--closed-border); background: var(--closed-bg); }
+.fit-verdict.verdict-skip .fit-verdict-label { color: var(--closed-text); }
+
+.fit-scores { display: flex; gap: 1.75rem; flex-wrap: wrap; margin-bottom: 1.25rem; }
+.fit-score { font-size: .72rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.fit-score .num { font-size: 1.5rem; display: block; font-weight: bold; letter-spacing: -.02em; text-transform: none; margin-bottom: .1rem; }
+.fit-score .num.good { color: var(--pursue); }
+.fit-score .num.mid { color: var(--review); }
+.fit-score .num.low { color: var(--closed-text); }
+
+.fit-tags { display: flex; flex-wrap: wrap; gap: .45rem; margin-bottom: 1.1rem; }
+.pill.match { background: var(--pursue-bg); color: var(--pursue); border: 1px solid var(--pursue-border); }
+.pill.gap { background: var(--review-bg); color: var(--review); border: 1px solid var(--review-border); }
+.pill.flag { background: var(--stretch-bg); color: var(--stretch); border: 1px solid var(--stretch-border); }
+
+.fit-summary {
+  font-size: .88rem; line-height: 1.6; color: var(--text);
+  background: var(--skipped-bg); border: 1px solid var(--skipped-border);
+  border-radius: 8px; padding: .9rem 1.1rem; margin-bottom: 1rem;
+}
+
+.fit-copy-wrap { display: flex; align-items: center; gap: .75rem; }

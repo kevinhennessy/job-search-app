@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type Job, daysSince } from "./lib/api";
 import JobCard from "./components/JobCard";
+import FitEvaluator from "./components/FitEvaluator";
 
 type Filter = "all" | "pending" | "applied" | "later" | "closed";
 type Section = "pursue" | "review" | "stretch" | "applied" | "passed" | "skipped";
+type View = "jobs" | "fit";
 
 const FILTERS: Filter[] = ["all", "pending", "applied", "later", "closed"];
 const STALE_DAYS = 14;  // roles whose last alert is older than this are likely closed/filled
 
 export default function App() {
+  const [view, setView] = useState<View>("jobs");
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filter, setFilter] = useState<Filter>("pending");
   const [hideStale, setHideStale] = useState(false);
@@ -159,49 +162,73 @@ export default function App() {
       <div className="header">
         <div className="header-top">
           <h1>Job Search Triage</h1>
-          <div className="run-actions">
-            <button className="run-btn" onClick={runTriage} disabled={running}>
-              {running ? "running…" : "Run triage"}
-            </button>
-            <button className="run-btn scan-btn" onClick={runScan} disabled={running}>
-              {running ? "…" : "Scan portals"}
-            </button>
-          </div>
+          {view === "jobs" && (
+            <div className="run-actions">
+              <button className="run-btn" onClick={runTriage} disabled={running}>
+                {running ? "running…" : "Run triage"}
+              </button>
+              <button className="run-btn scan-btn" onClick={runScan} disabled={running}>
+                {running ? "…" : "Scan portals"}
+              </button>
+            </div>
+          )}
         </div>
         <div className="meta">Aidan Hennessy · notes auto-save</div>
-        <div className="stats">
-          <div className="stat pursue"><span className="num">{buckets.pursue.length}</span>pursue</div>
-          <div className="stat review"><span className="num">{buckets.review.length}</span>review</div>
-          <div className="stat stretch"><span className="num">{buckets.stretch.length}</span>stretch</div>
-          <div className="stat applied"><span className="num">{buckets.applied.length}</span>applied</div>
-          <div className="stat passed"><span className="num">{buckets.passed.length}</span>passed/closed</div>
-          <div className="stat skipped"><span className="num">{buckets.skipped.length}</span>skipped</div>
+        <div className="filter-bar view-tabs">
+          <button
+            className={`filter-btn${view === "jobs" ? " active" : ""}`}
+            onClick={() => setView("jobs")}
+          >
+            job list
+          </button>
+          <button
+            className={`filter-btn${view === "fit" ? " active" : ""}`}
+            onClick={() => setView("fit")}
+          >
+            fit evaluator
+          </button>
         </div>
+        {view === "jobs" && (
+          <div className="stats">
+            <div className="stat pursue"><span className="num">{buckets.pursue.length}</span>pursue</div>
+            <div className="stat review"><span className="num">{buckets.review.length}</span>review</div>
+            <div className="stat stretch"><span className="num">{buckets.stretch.length}</span>stretch</div>
+            <div className="stat applied"><span className="num">{buckets.applied.length}</span>applied</div>
+            <div className="stat passed"><span className="num">{buckets.passed.length}</span>passed/closed</div>
+            <div className="stat skipped"><span className="num">{buckets.skipped.length}</span>skipped</div>
+          </div>
+        )}
         {runMsg && <div className="run-status">{runMsg}</div>}
       </div>
 
-      <div className="filter-bar">
-        {FILTERS.map((f) => (
-          <button
-            key={f}
-            className={`filter-btn${filter === f ? " active" : ""}`}
-            onClick={() => setFilter(f)}
-          >
-            {f === "later" ? "review later" : f}
-          </button>
-        ))}
-        <label className="stale-toggle">
-          <input type="checkbox" checked={hideStale} onChange={(e) => setHideStale(e.target.checked)} />
-          hide stale (&gt;{STALE_DAYS}d)
-        </label>
-      </div>
+      {view === "fit" ? (
+        <FitEvaluator />
+      ) : (
+        <>
+          <div className="filter-bar">
+            {FILTERS.map((f) => (
+              <button
+                key={f}
+                className={`filter-btn${filter === f ? " active" : ""}`}
+                onClick={() => setFilter(f)}
+              >
+                {f === "later" ? "review later" : f}
+              </button>
+            ))}
+            <label className="stale-toggle">
+              <input type="checkbox" checked={hideStale} onChange={(e) => setHideStale(e.target.checked)} />
+              hide stale (&gt;{STALE_DAYS}d)
+            </label>
+          </div>
 
-      {renderSection("pursue", "Pursue")}
-      {renderSection("review", "Review")}
-      {renderSection("stretch", "Stretch — over-experienced, referral-worthy")}
-      {renderSection("applied", "Applied")}
-      {renderSection("passed", "Passed / Closed")}
-      {renderSection("skipped", "Skipped")}
+          {renderSection("pursue", "Pursue")}
+          {renderSection("review", "Review")}
+          {renderSection("stretch", "Stretch — over-experienced, referral-worthy")}
+          {renderSection("applied", "Applied")}
+          {renderSection("passed", "Passed / Closed")}
+          {renderSection("skipped", "Skipped")}
+        </>
+      )}
     </div>
   );
 }

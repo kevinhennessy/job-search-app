@@ -53,6 +53,19 @@ export interface Run {
   n_emails: number;
 }
 
+export interface FitResult {
+  overall_score: number;
+  title_fit: number;
+  experience_bar: number;
+  niche_match: number;
+  verdict: "apply" | "caution" | "skip";
+  verdict_reason: string;
+  matches: string[];
+  gaps: string[];
+  flags: string[];
+  summary: string;
+}
+
 async function j<T>(res: Response): Promise<T> {
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
   return res.json() as Promise<T>;
@@ -80,4 +93,11 @@ export const api = {
 
   triggerScan: () =>
     fetch(`/api/runs/scan`, { method: "POST" }).then(j<Run>),
+
+  fitEvaluate: (posting: string) =>
+    fetch(`/api/fit-evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ posting }),
+    }).then(j<FitResult>),
 };

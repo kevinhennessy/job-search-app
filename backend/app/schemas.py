@@ -41,6 +41,23 @@ class StatsOut(BaseModel):
     skipped: int
 
 
+class FitEvaluateRequest(BaseModel):
+    posting: str
+
+
+class FitEvaluateResult(BaseModel):
+    overall_score: int
+    title_fit: int
+    experience_bar: int
+    niche_match: int
+    verdict: str            # apply | caution | skip
+    verdict_reason: str
+    matches: list[str] = []
+    gaps: list[str] = []
+    flags: list[str] = []
+    summary: str
+
+
 class RunOut(BaseModel):
     id: int
     started_at: datetime
