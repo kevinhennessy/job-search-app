@@ -244,6 +244,19 @@ INCLUDE_TITLE_KEYWORDS = [
     "quantitative associate",  # Duke DUMAC and similar investment/research analytics roles
     "quantitative analyst",    # similar quant roles requiring DS/ML skills
     "quantitative developer",  # quant dev roles requiring programming/ML skills
+    # Adjacent titles added July 2026 — broadening beyond straight
+    # "Data Scientist" postings, which are proving too thin on volume
+    # in the Triangle market alone. Company/role-type screening still
+    # applies at the evaluator step, so title-inflation risk (e.g. BPO
+    # "Research Analyst" postings) is caught downstream, not here.
+    "biostatistician",          # promoted from NC Biotech Center override to global list
+    "business intelligence analyst",  # full phrase only — avoid bare "bi" fragment (bi-weekly, etc.)
+    "health informatics",
+    "clinical analytics",
+    "decision science",
+    "decision scientist",
+    "applied scientist",        # EXCLUDE_KEYWORDS already filters senior/principal/lead variants
+    "insights analyst",
     # Expanded AI title coverage — the landscape of AI-prefixed titles is
     # growing rapidly. Specific two-word combos keep noise low while catching
     # the long tail of "AI <something> Engineer/Scientist/Developer" roles.
