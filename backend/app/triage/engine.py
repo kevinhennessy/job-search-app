@@ -98,12 +98,23 @@ def _classify_reason_fields(reason: Optional[str]) -> tuple[Optional[str], Optio
         claude_reason = reason[len("Claude: "):]
     elif reason.startswith("Stretch: "):
         claude_reason = reason[len("Stretch: "):]
+    elif reason.startswith("Skip: "):
+        claude_reason = reason[len("Skip: "):]
     return reason, claude_reason, warning
 
 
 def _is_stretch_reason(reason: Optional[str]) -> bool:
     """Claude tagged this demotion as an experience stretch (see legacy evaluator)."""
     return bool(reason) and reason.startswith("Stretch:")
+
+
+def _is_location_hard_blocker_reason(reason: Optional[str]) -> bool:
+    """Claude tagged this demotion as a location hard blocker — relocation
+    required, non-NC residency restriction, or hybrid based outside the
+    Triangle (see candidate_profile.md's Location constraints section and
+    legacy evaluator's location_hard_blocker field). Routed to Skipped
+    rather than Review/Stretch since it's a harder disqualifier."""
+    return bool(reason) and reason.startswith("Skip:")
 
 
 def _is_snippet_only(reason: Optional[str]) -> bool:
@@ -263,14 +274,24 @@ def _process_and_persist(session: Session, all_jobs: list, run: Run,
             verified_pursue.append((job, reason))
     pursue = verified_pursue
 
-    # --- route experience-gap roles into the Stretch tier ---
+    # --- route experience-gap roles into the Stretch tier, and location hard
+    #     blockers into Skipped ---
     # Stretch comes from two places: Claude demotions tagged "Stretch:" and
-    # the snippet-level experience gate's skips. Everything else is unchanged.
+    # the snippet-level experience gate's skips. Location hard blockers
+    # (tagged "Skip:" — relocation/residency/hybrid-outside-the-Triangle, see
+    # candidate_profile.md) are a harder disqualifier than an ordinary
+    # demotion, so they're pulled out of Review into Skipped instead of
+    # cluttering it. Everything else is unchanged.
     stretch: list = []
     review_final: list = []
-    for job, reason in review:
-        (stretch if _is_stretch_reason(reason) else review_final).append((job, reason))
     skipped_final: list = []
+    for job, reason in review:
+        if _is_location_hard_blocker_reason(reason):
+            skipped_final.append((job, reason))
+        elif _is_stretch_reason(reason):
+            stretch.append((job, reason))
+        else:
+            review_final.append((job, reason))
     for job, reason in skipped:
         (stretch if _is_experience_skip(reason) else skipped_final).append((job, reason))
 

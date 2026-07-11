@@ -8,10 +8,10 @@ const STATUS_BTNS: { key: "applied" | "later" | "pass" | "closed"; label: string
   { key: "closed", label: "closed" },
 ];
 
-// The reason carries an internal routing tag ("Stretch:"/"Claude:"); the section
-// header already conveys the bucket, so strip it for a clean, readable message.
+// The reason carries an internal routing tag ("Stretch:"/"Claude:"/"Skip:"); the
+// section header already conveys the bucket, so strip it for a clean, readable message.
 function stripReasonPrefix(reason: string): string {
-  return reason.replace(/^(Stretch|Claude):\s*/, "");
+  return reason.replace(/^(Stretch|Claude|Skip):\s*/, "");
 }
 
 interface Props {

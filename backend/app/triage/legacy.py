@@ -2371,8 +2371,9 @@ def claude_evaluate_jobs(
                 log.info("[debug] fetch_jd: failed url=%s error=%s", url[:80], e)
             return ""
 
-    def evaluate_job(job: dict) -> tuple[bool, str]:
-        """Ask Claude if this job is realistic for Aidan. Returns (is_fit, explanation)."""
+    def evaluate_job(job: dict) -> tuple:
+        """Ask Claude if this job is realistic for Aidan. Returns
+        (is_fit, reason, years_required, jd_substantive, highlight, location_hard_blocker)."""
         # Prefer JD text resolved upstream (e.g. via Tavily for blocked sources);
         # fall back to the direct fetch when none was supplied.
         jd_text = job.get("jd_text") or fetch_jd_text(job.get("url", ""))
@@ -2401,6 +2402,7 @@ Focus specifically on:
 4. Any other hard blockers (clearance required, specific industry license, citizenship requirements, etc.)
 5. Seniority signals — ONLY explicit title markers count: "Senior"/"Sr.", "Staff", "Lead", "Principal", "Manager", "Director", or a level suffix (II, III, IV, V). A plain title like "AI Engineer", "Agentic AI Engineer", "Data Scientist", or "ML Engineer" with no such marker spans all levels and is NOT inherently senior — defer to the JD text. Do not speculate about the experience or technical "depth" a role "likely" requires beyond what the JD explicitly states.
 6. Job-board metadata fields — aggregator pages (Teal, LinkedIn, etc.) auto-populate structured fields like "Education Level", "Career Level", or "Job Type" that are frequently inaccurate or internally contradictory (e.g. "Career Level: Entry Level" shown right next to "Education Level: Ph.D."). A degree or education requirement counts as a hard blocker ONLY when the actual requirements/qualifications PROSE states it — never from a standalone "Education Level" field on its own, and especially NOT when an "Entry Level" / early-career marker is present. Treat an explicit "Entry Level" or "Career Level: Entry Level" marker as a fit signal, not a blocker.
+7. Location hard blockers (see candidate profile's Location constraints section) — check the JD body text, not just the title/location field, for relocation requirements, a residency restriction that excludes North Carolina, or a hybrid schedule based outside the Research Triangle (Durham/Raleigh/Cary/Morrisville/Chapel Hill/RTP). If present, set "location_hard_blocker": true. A remote role with only an occasional on-site requirement (e.g. quarterly travel, periodic team offsites) is NOT a hard blocker — note the on-site cadence in "reason" instead and leave "location_hard_blocker": false; this should demote like any other not-a-fit role, not be treated as disqualifying.
 
 IMPORTANT: If the job description text is unavailable or contains only navigation/UI markup rather than actual job content, set is_fit=true and confidence=low with reason explaining JD was unavailable. Do NOT move jobs to Review simply because the JD could not be fetched — only flag as not fit when you have clear evidence of a blocker.
 
@@ -2410,6 +2412,7 @@ Respond in JSON only with these fields:
   "confidence": "high/medium/low",
   "reason": "one sentence explanation — if not fit, state the specific blocker",
   "years_required": number or null,
+  "location_hard_blocker": true/false,
   "highlight": "SELECTIVE note, for a FIT role only — default to an EMPTY STRING. Populate it ONLY when there is something genuinely worth flagging to Aidan about this specific role: a standout reason to prioritize it (e.g. direct clinical/healthcare or MIMIC-IV alignment, an unusually strong match to his skills or stated interests) OR a real caveat worth watching despite the fit (e.g. a borderline experience requirement, an ambiguous seniority signal). For ordinary, unremarkable fits leave it empty — do NOT invent something to say. Under 18 words, concrete, specific to this role."
 }}
 
@@ -2424,7 +2427,7 @@ Return ONLY valid JSON, no other text."""
             if not api_key:
                 if DEBUG:
                     log.info("[debug] claude_eval: ANTHROPIC_API_KEY not set, skipping evaluation")
-                return True, "", None, jd_substantive, ""
+                return True, "", None, jd_substantive, "", False
 
             payload = json.dumps({
                 "model": "claude-haiku-4-5-20251001",
@@ -2469,21 +2472,22 @@ Return ONLY valid JSON, no other text."""
             reason = result.get("reason", "")
             years = result.get("years_required")
             confidence = result.get("confidence", "low")
+            location_hard_blocker = bool(result.get("location_hard_blocker", False))
             highlight = (result.get("highlight") or "").strip()
             if len(highlight) > 200:        # defensive cap; prompt asks for <18 words
                 highlight = highlight[:200].rstrip()
 
             if DEBUG:
-                log.info("[debug] claude_eval: '%s' -> fit=%s conf=%s reason=%s highlight=%s",
-                         job["title"], is_fit, confidence, reason, highlight)
+                log.info("[debug] claude_eval: '%s' -> fit=%s conf=%s reason=%s highlight=%s location_hard_blocker=%s",
+                         job["title"], is_fit, confidence, reason, highlight, location_hard_blocker)
 
-            return is_fit, reason, years, jd_substantive, highlight
+            return is_fit, reason, years, jd_substantive, highlight, location_hard_blocker
 
         except Exception as e:
             if DEBUG:
                 log.info("[debug] claude_eval error for '%s': %s", job["title"], e)
-            # On error, default to keeping in Pursue
-            return True, "", None, jd_substantive, ""
+            # On error, default to keeping in Pursue — never auto-skip on a parse/API failure.
+            return True, "", None, jd_substantive, "", False
 
     new_pursue = []
     new_review = list(review)  # start with existing review items
@@ -2499,15 +2503,29 @@ Return ONLY valid JSON, no other text."""
         # snippet-only — evaluate it normally instead of tagging it ⚠.
         jd_blocked = source in JD_BLOCKED_SOURCES and not job.get("jd_text")
 
-        is_fit, claude_reason, years_req, jd_substantive, highlight = evaluate_job(job)
+        is_fit, claude_reason, years_req, jd_substantive, highlight, location_hard_blocker = evaluate_job(job)
 
         # An experience-gap demotion is routed to the Stretch tier (tagged
         # "Stretch:") rather than Review, so Review stays for other mismatches.
-        # The engine reads this prefix to bucket the job. Threshold is config-driven.
+        # A location hard blocker (relocation required / non-NC residency
+        # restriction / hybrid based outside the Triangle — see
+        # candidate_profile.md's Location constraints section) is routed to
+        # Skipped (tagged "Skip:") instead: it's a harder disqualifier than an
+        # ordinary demotion and shouldn't sit in Review. Checked before the
+        # Stretch test since a location blocker outranks an experience-gap
+        # reason if Claude somehow flagged both. The engine reads these
+        # prefixes to bucket the job. Threshold is config-driven.
         _stretch_threshold = getattr(config, "STRETCH_YEARS_THRESHOLD", 2)
         _is_stretch = (not is_fit) and (years_req is not None) and (years_req > _stretch_threshold)
-        _demote_prefix = "Stretch" if _is_stretch else "Claude"   # reason tag (engine routes on this)
-        _dest = "Stretch" if _is_stretch else "Review"            # destination bucket (for logging)
+        if location_hard_blocker:
+            _demote_prefix = "Skip"
+            _dest = "Skipped"
+        elif _is_stretch:
+            _demote_prefix = "Stretch"
+            _dest = "Stretch"
+        else:
+            _demote_prefix = "Claude"
+            _dest = "Review"
 
         if jd_blocked:
             # Always tag with warning regardless of Claude's verdict,
