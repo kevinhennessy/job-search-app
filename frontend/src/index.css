@@ -191,3 +191,29 @@ section { margin-bottom: 2.75rem; }
 }
 
 .fit-copy-wrap { display: flex; align-items: center; gap: .75rem; }
+
+/* --- Inline per-card fit badge (JobCard) --- */
+.fit-badge-row {
+  display: flex; align-items: center; gap: .5rem; margin-top: .75rem;
+  font-family: var(--mono); font-size: .72rem; padding: .4rem .65rem;
+  border-radius: 8px; border: 1px solid var(--border);
+}
+.fit-badge-loading { color: var(--muted); font-style: italic; }
+.fit-badge { cursor: pointer; user-select: none; transition: box-shadow .12s; }
+.fit-badge:hover { box-shadow: var(--shadow-sm); }
+.fit-badge-label { font-weight: 700; text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+.fit-badge-score { font-weight: 700; white-space: nowrap; }
+.fit-badge-reason { color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fit-badge .toggle { margin-left: auto; }
+
+.fit-badge.verdict-apply { border-color: var(--pursue-border); background: var(--pursue-bg); }
+.fit-badge.verdict-apply .fit-badge-label { color: var(--pursue); }
+.fit-badge.verdict-caution { border-color: var(--review-border); background: var(--review-bg); }
+.fit-badge.verdict-caution .fit-badge-label { color: var(--review); }
+.fit-badge.verdict-skip { border-color: var(--closed-border); background: var(--closed-bg); }
+.fit-badge.verdict-skip .fit-badge-label { color: var(--closed-text); }
+
+.fit-breakdown { margin-top: .9rem; padding-top: .9rem; border-top: 1px solid var(--border); }
+.fit-breakdown .fit-scores { margin-bottom: 1rem; }
+.fit-breakdown .fit-tags { margin-bottom: .9rem; }
+.fit-breakdown .fit-summary { margin-bottom: .75rem; }

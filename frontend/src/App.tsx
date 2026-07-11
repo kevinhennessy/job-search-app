@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Job, daysSince } from "./lib/api";
 import JobCard from "./components/JobCard";
 import FitEvaluator from "./components/FitEvaluator";
@@ -10,6 +10,25 @@ type View = "jobs" | "fit";
 const FILTERS: Filter[] = ["all", "pending", "applied", "later", "closed"];
 const STALE_DAYS = 14;  // roles whose last alert is older than this are likely closed/filled
 
+// Sections that get automatic, cached Job Fit Evaluator scoring — the still-
+// undecided piles. Applied/Passed/Skipped are already decided, so evaluating
+// them would just burn Claude calls on jobs nobody needs a verdict for.
+const FIT_SECTIONS = new Set<Section>(["pursue", "review", "stretch"]);
+const VERDICT_RANK: Record<string, number> = { apply: 0, caution: 1, skip: 2 };
+const FIT_CONCURRENCY = 4;
+
+/** Runs `worker` over `items` with at most `limit` in flight at once. */
+async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>) {
+  let i = 0;
+  async function next(): Promise<void> {
+    const idx = i++;
+    if (idx >= items.length) return;
+    await worker(items[idx]);
+    return next();
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, next));
+}
+
 export default function App() {
   const [view, setView] = useState<View>("jobs");
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -20,6 +39,8 @@ export default function App() {
   });
   const [running, setRunning] = useState(false);
   const [runMsg, setRunMsg] = useState("");
+  const [fitPendingIds, setFitPendingIds] = useState<Set<string>>(new Set());
+  const startedFitRef = useRef<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     const j = await api.jobs(true);
@@ -45,6 +66,39 @@ export default function App() {
     }
     return out;
   }, [jobs]);
+
+  // --- auto-evaluate: fire one Claude fit-evaluation per not-yet-scored job in
+  //     the active piles, in parallel (capped), caching the result server-side
+  //     so a given job is only ever scored once. startedFitRef (a ref, not
+  //     state) tracks "already kicked off" without retriggering this effect. ---
+  useEffect(() => {
+    const toEvaluate = [...buckets.pursue, ...buckets.review, ...buckets.stretch].filter(
+      (j) => !j.fit_verdict && !startedFitRef.current.has(j.id),
+    );
+    if (toEvaluate.length === 0) return;
+
+    toEvaluate.forEach((j) => startedFitRef.current.add(j.id));
+    setFitPendingIds((prev) => {
+      const next = new Set(prev);
+      toEvaluate.forEach((j) => next.add(j.id));
+      return next;
+    });
+
+    runPool(toEvaluate, FIT_CONCURRENCY, async (job) => {
+      try {
+        const updated = await api.evaluateJobFit(job.id);
+        setJobs((prev) => prev.map((j) => (j.id === job.id ? updated : j)));
+      } catch (e) {
+        console.error(`fit evaluate failed for ${job.id}:`, e);
+      } finally {
+        setFitPendingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(job.id);
+          return next;
+        });
+      }
+    });
+  }, [buckets]);
 
   function passesFilter(job: Job): boolean {
     switch (filter) {
@@ -134,7 +188,14 @@ export default function App() {
   }
 
   function renderSection(s: Section, label: string) {
-    const list = buckets[s].filter(passesFilter).filter((j) => !hideStale || !isStale(j));
+    let list = buckets[s].filter(passesFilter).filter((j) => !hideStale || !isStale(j));
+    // Float Apply above Caution above Skip above not-yet-evaluated. Array.sort
+    // is stable, so ties (including "no verdict yet") keep their existing order.
+    if (FIT_SECTIONS.has(s)) {
+      list = [...list].sort(
+        (a, b) => (VERDICT_RANK[a.fit_verdict ?? ""] ?? 3) - (VERDICT_RANK[b.fit_verdict ?? ""] ?? 3),
+      );
+    }
     return (
       <section>
         <div className={`section-header ${s}`} onClick={() => toggle(s)}>
@@ -148,6 +209,7 @@ export default function App() {
                 <JobCard
                   key={job.id}
                   job={job}
+                  fitPending={fitPendingIds.has(job.id)}
                   onStatus={(id, status) => patch(id, { status })}
                   onNote={(id, note) => patch(id, { note })}
                 />

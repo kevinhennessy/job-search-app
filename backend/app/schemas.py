@@ -26,6 +26,18 @@ class JobOut(BaseModel):
     last_seen: datetime
     last_alert_date: Optional[datetime] = None
 
+    # Cached Job Fit Evaluator result (from JobFit), None until evaluated.
+    fit_overall: Optional[int] = None
+    fit_title: Optional[int] = None
+    fit_experience: Optional[int] = None
+    fit_niche: Optional[int] = None
+    fit_verdict: Optional[str] = None       # apply | caution | skip
+    fit_verdict_reason: Optional[str] = None
+    fit_matches: list[str] = []
+    fit_gaps: list[str] = []
+    fit_flags: list[str] = []
+    fit_summary: Optional[str] = None
+
 
 class JobPatch(BaseModel):
     """Partial update to a job's user state. Either field may be present."""

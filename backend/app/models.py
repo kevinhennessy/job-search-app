@@ -68,6 +68,26 @@ class Run(SQLModel, table=True):
     n_emails: int = 0
 
 
+class JobFit(SQLModel, table=True):
+    """Cached Job Fit Evaluator result, keyed by the job's stable id. Computed
+    on demand (one Claude call per job, triggered from the frontend, not part
+    of the triage/scan pipeline) and never touched by a run — same caching
+    pattern as JdCache below. Matches/gaps/flags are stored JSON-encoded since
+    SQLite has no native array column."""
+    stable_id: str = Field(primary_key=True)
+    overall_score: int
+    title_fit: int
+    experience_bar: int
+    niche_match: int
+    verdict: str                # apply | caution | skip
+    verdict_reason: str
+    matches_json: str = "[]"
+    gaps_json: str = "[]"
+    flags_json: str = "[]"
+    summary: str
+    evaluated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class JdCache(SQLModel, table=True):
     """Cached Tavily JD-lookup result, keyed by the job's stable id.
 

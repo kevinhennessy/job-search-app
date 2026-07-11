@@ -21,6 +21,18 @@ export interface Job {
   first_seen: string;
   last_seen: string;
   last_alert_date: string | null;
+
+  // Cached Job Fit Evaluator result (null until evaluated).
+  fit_overall: number | null;
+  fit_title: number | null;
+  fit_experience: number | null;
+  fit_niche: number | null;
+  fit_verdict: "apply" | "caution" | "skip" | null;
+  fit_verdict_reason: string | null;
+  fit_matches: string[];
+  fit_gaps: string[];
+  fit_flags: string[];
+  fit_summary: string | null;
 }
 
 /** Whole days since an ISO timestamp, or null if missing/unparseable. */
@@ -100,4 +112,7 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ posting }),
     }).then(j<FitResult>),
+
+  evaluateJobFit: (id: string) =>
+    fetch(`/api/jobs/${encodeURIComponent(id)}/fit-evaluate`, { method: "POST" }).then(j<Job>),
 };
