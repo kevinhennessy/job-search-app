@@ -36,3 +36,7 @@ Thumbs.db
 
 # One-off diagnostic scripts — not core to the app, no version history needed
 scripts/
+
+# Claude Code local settings — machine-specific permission grants, not shared
+# project config (project skills under .claude/skills/ are still tracked)
+.claude/settings.json
