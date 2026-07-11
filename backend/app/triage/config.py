@@ -346,6 +346,7 @@ SALARY_MINIMUM = 90_000           # annual USD
 SKIP_COMPANIES = [
     # Already-evaluated or pipeline companies
     "almac",
+    "arcgate",
     "covar",
     "duke biostatistician",
     "duke health",
