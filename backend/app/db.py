@@ -33,7 +33,10 @@ def _migrate() -> None:
     from sqlalchemy.exc import OperationalError
 
     additions = {
-        "run": [("n_stretch", "INTEGER NOT NULL DEFAULT 0")],
+        "run": [
+            ("n_stretch", "INTEGER NOT NULL DEFAULT 0"),
+            ("covered_through", "TIMESTAMP"),
+        ],
         "jdcache": [("jd_url", "TEXT NOT NULL DEFAULT ''")],
         "job": [("last_alert_date", "TIMESTAMP")],
     }

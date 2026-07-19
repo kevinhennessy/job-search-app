@@ -220,6 +220,12 @@ JOB_INTENT_KEYWORDS = [
 # their hand-written parsers and never count against this budget.
 LLM_EXTRACT_MAX_PER_RUN = 25
 
+# Safety cap on the run-triage query floor when using the last successful
+# run's covered_through instead of a fixed hours_back rollback (see
+# engine._coverage_floor). Without this, a long-dormant app (down for weeks)
+# would suddenly pull that entire backlog in one run on its next trigger.
+COVERAGE_MAX_LOOKBACK_HOURS = 24 * 14   # 14 days
+
 # ---------------------------------------------------------------------------
 # Role title keywords to INCLUDE (case-insensitive, any-word match)
 # ---------------------------------------------------------------------------

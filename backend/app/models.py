@@ -67,6 +67,14 @@ class Run(SQLModel, table=True):
     n_skipped: int = 0
     n_emails: int = 0
 
+    # The Gmail-timestamp point this run's query covered up through (set only
+    # on a successful email run — never for a portal scan, never on error).
+    # The next run_triage call uses the most recent one of these as its query
+    # floor instead of a fixed hours_back rollback, so gaps between irregular
+    # run cadences can't silently drop emails between two runs' lookback
+    # windows. See CLAUDE.md's "Run-coverage gaps" gotcha.
+    covered_through: Optional[datetime] = None
+
 
 class JobFit(SQLModel, table=True):
     """Cached Job Fit Evaluator result, keyed by the job's stable id. Computed

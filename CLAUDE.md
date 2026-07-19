@@ -157,6 +157,36 @@ dependency). Keep that pattern if adding new LLM calls.
 - **The standalone scripts** (`triage.py`, `scan.py`) predate this app and evolve
   separately. This app's `legacy.py` is the source of truth for app behavior; the
   standalones won't automatically have app-side fixes.
+- **Run-coverage gaps, not a multi-job parsing bug.** A job ("Alta Planning +
+  Design") once appeared to vanish entirely from an Indeed multi-listing digest
+  email, with a sibling listing from the same run landing fine — looked exactly
+  like "the Indeed parser only extracts the first job." Direct testing (fetching
+  the real message by id and running `extract_jobs`/`classify_job`/
+  `claude_evaluate_jobs` on it in isolation, bypassing the run entirely) proved
+  the parser and pipeline handle multi-job Indeed emails correctly; both listings
+  extracted and evaluated fine. The sibling "successful" job in the DB turned out
+  to have come from a *different* sender (NCWorks) that coincidentally listed the
+  same employer — confirmed by an exact company-string match, not assumed. The
+  real cause: `run_triage` queried Gmail for a fixed `hours_back` rollback from
+  "now," so any two runs spaced further apart than that window leave an
+  uncovered gap between them — whatever arrived in the gap is silently never
+  fetched, by any sender, not just Indeed. Fixed by `Run.covered_through`: each
+  successful email run stamps the instant its query was issued (captured
+  *before* the fetch, so anything arriving mid-run is left for the next run
+  rather than risking a race); `engine._coverage_floor` uses the last
+  successful run's `covered_through` as the next run's query floor (via
+  `build_query`'s new `since` param → an exact `after:<epoch-seconds>` clause,
+  not day-granular, so it doesn't reintroduce the day-boundary problem
+  `newer_than:Nd` was chosen to avoid) instead of a fixed rollback — capped by
+  `config.COVERAGE_MAX_LOOKBACK_HOURS` (14 days) so a long-dormant app doesn't
+  suddenly pull months of backlog on its next run. `covered_through` is only
+  set on success, never on error, so a failed run doesn't falsely advance
+  coverage past a gap it never actually queried. Portal scans are unaffected —
+  they scan currently-open roles, not a time window, so this doesn't apply.
+  Lesson: when a "missing item" report includes a sibling that *did* succeed,
+  verify the sibling actually came from the same source before trusting that
+  as evidence of a single-item bug — here it was two unrelated facts, not one
+  inconsistency.
 
 ---
 

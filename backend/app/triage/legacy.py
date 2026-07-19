@@ -124,13 +124,21 @@ def get_gmail_service():
 _generic_extract_calls = 0
 
 
-def build_query(hours_back: int) -> str:
+def build_query(hours_back: int, since: "datetime | None" = None) -> str:
     """
-    Build a Gmail search query covering all monitored senders
-    within the last `hours_back` hours.
+    Build a Gmail search query covering all monitored senders.
 
-    Uses newer_than:Nd (relative, user-timezone-aware) rather than after:YYYY/MM/DD
-    to avoid silent misses at day boundaries.
+    Default mode: within the last `hours_back` hours, via newer_than:Nd
+    (relative, user-timezone-aware) rather than after:YYYY/MM/DD, to avoid
+    silent misses at day boundaries.
+
+    If `since` is given (the previous successful run's covered_through —
+    see engine.run_triage), it's used as the query floor instead, via
+    after:<unix-epoch-seconds> — Gmail's after:/before: accept a timestamp
+    at second precision, not just YYYY/MM/DD, so this doesn't reintroduce
+    the day-boundary problem the newer_than fallback above avoids. This
+    closes the run-coverage gap: two runs spaced further apart than
+    hours_back no longer lose whatever arrived in between (see CLAUDE.md).
     """
     # Round up to whole days; minimum 1.
     days_back = max(1, -(-hours_back // 24))   # ceiling division
@@ -162,12 +170,15 @@ def build_query(hours_back: int) -> str:
     # phrases in the subject line; the extractor returns nothing for non-job mail.
     intent_kw = getattr(config, "JOB_INTENT_KEYWORDS", [])
     intent_clauses = " OR ".join(f'"{kw}"' for kw in intent_kw)
+
+    time_clause = f"after:{int(since.timestamp())}" if since is not None else f"newer_than:{days_back}d"
+
     if sender_part and intent_clauses:
-        query = f"(({sender_part}) OR subject:({intent_clauses})) newer_than:{days_back}d"
+        query = f"(({sender_part}) OR subject:({intent_clauses})) {time_clause}"
     elif intent_clauses:
-        query = f"(subject:({intent_clauses})) newer_than:{days_back}d"
+        query = f"(subject:({intent_clauses})) {time_clause}"
     else:
-        query = f"({sender_part}) newer_than:{days_back}d"
+        query = f"({sender_part}) {time_clause}"
     log.info("Gmail query: %s", query)
     log.info("Tip: paste that query into the Gmail search box to verify it matches your emails.")
     return query

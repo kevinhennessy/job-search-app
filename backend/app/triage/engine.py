@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from sqlmodel import Session, select
@@ -311,6 +311,52 @@ def _process_and_persist(session: Session, all_jobs: list, run: Run,
     run.n_skipped = len(skipped_final)
 
 
+def _coverage_floor(
+    session: Session,
+    current_run_id: int,
+    query_as_of: datetime,
+    explicit_hours_back: Optional[int] = None,
+) -> Optional[datetime]:
+    """The Gmail-query floor for this run: normally the last successful email
+    run's covered_through, capped so a long-dormant app doesn't suddenly pull
+    months of backlog in one go.
+
+    `explicit_hours_back` is the caller-specified --hours/hours value, as
+    opposed to run_triage's settings-default fallback — a manual "go back
+    further than normal" request (e.g. a one-off backfill) that must actually
+    take effect rather than being silently overridden by the narrower
+    steady-state coverage floor. When given, the floor is whichever of the
+    two goes further back: the explicit request can WIDEN the query beyond
+    what coverage-tracking alone would fetch, but can never NARROW it below
+    what coverage-tracking already knows it needs to fetch (e.g. after a
+    genuine gap) — an explicit --hours is a "go back at least this far," not
+    a ceiling.
+
+    Returns None (falls back to build_query's default hours_back/newer_than
+    behavior) only when there's no prior coverage AND no explicit override —
+    e.g. the very first run ever."""
+    from . import config
+
+    last_covered = session.exec(
+        select(Run)
+        .where(Run.id != current_run_id, Run.covered_through.is_not(None))
+        .order_by(Run.covered_through.desc())
+    ).first()
+
+    coverage_floor = None
+    if last_covered and last_covered.covered_through:
+        cap_floor = query_as_of - timedelta(hours=config.COVERAGE_MAX_LOOKBACK_HOURS)
+        coverage_floor = max(last_covered.covered_through, cap_floor)
+
+    if explicit_hours_back is None:
+        return coverage_floor
+
+    explicit_floor = query_as_of - timedelta(hours=explicit_hours_back)
+    if coverage_floor is None:
+        return explicit_floor
+    return min(coverage_floor, explicit_floor)   # further back wins -- widen, never narrow
+
+
 def run_triage(session: Session, hours_back: Optional[int] = None,
                skip_claude: Optional[bool] = None) -> Run:
     """
@@ -320,6 +366,10 @@ def run_triage(session: Session, hours_back: Optional[int] = None,
     """
     from . import legacy  # lazy: needs google-api / bs4 only when actually running
 
+    # Captured before the settings-default fallback below so _coverage_floor
+    # can tell "caller explicitly asked for N hours" (a backfill override)
+    # apart from "nobody said anything, use the steady-state default."
+    explicit_hours_back = hours_back
     hours_back = settings.DEFAULT_HOURS_BACK if hours_back is None else hours_back
     skip_claude = settings.SKIP_CLAUDE_EVAL if skip_claude is None else skip_claude
 
@@ -329,8 +379,15 @@ def run_triage(session: Session, hours_back: Optional[int] = None,
     session.refresh(run)
 
     try:
+        # Captured before the query runs, not after: this run's coverage is
+        # "everything as of this instant," so a message that arrives mid-run
+        # is simply left for the next run to pick up rather than risking a
+        # gap if we stamped covered_through after processing finished.
+        query_as_of = datetime.utcnow()
+        since = _coverage_floor(session, run.id, query_as_of, explicit_hours_back)
+
         service = legacy.get_gmail_service()
-        query = legacy.build_query(hours_back)
+        query = legacy.build_query(hours_back, since=since)
         messages = legacy.fetch_messages(service, query)
         run.n_emails = len(messages)
 
@@ -344,6 +401,7 @@ def run_triage(session: Session, hours_back: Optional[int] = None,
         _process_and_persist(session, all_jobs, run, skip_claude)
         run.status = "done"
         run.finished_at = datetime.utcnow()
+        run.covered_through = query_as_of
         session.add(run)
         session.commit()
         session.refresh(run)
