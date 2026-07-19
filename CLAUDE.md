@@ -140,6 +140,31 @@ dependency). Keep that pattern if adding new LLM calls.
   `linkedin.com/jobs/search?keywords=…Unknown` fallback URL when it can't parse the
   employer. The guard is the safety net; the parser is the root. The standalone
   `triage.py` has the same parser and would want the same guard if run.
+- **Indeed digest-header phantom entries.** `_parse_indeed_jobs_h2` walks every
+  `<h2>` in the email to find job-card titles — but Indeed's own alert-summary
+  headline ("2 new data analyst jobs in Durham, NC") is *also* wrapped in an
+  `<h2>`, right alongside the real listings, so a naive walk picks it up as if
+  it were a posting. It's a convincing fake: the title is job-shaped ("...jobs
+  in Durham, NC") and it survives every existing exclusion (footer-link list,
+  unsubscribe/manage/privacy keywords) since it's neither. Symptom: it lands in
+  Review as "cannot evaluate, no real JD" — because there is no real JD, there's
+  no real job, just Indeed's own count-of-results sentence with a "company" of
+  literally "These jobs match your saved job alert…". Confirmed via the full
+  historical corpus (150 persisted Indeed rows): 16 (~11%) were this artifact,
+  100% of them sharing that exact company boilerplate — a real, systematic
+  noise source, not a one-off. Fixed by `_is_digest_header(title, company)`,
+  gated on BOTH signals together (title matches `^\d+ new .* jobs? .* in`, AND
+  company starts with the alert-boilerplate string) rather than title alone —
+  a real job title starting with a number and mentioning "jobs...in" somewhere
+  is conceivable in isolation, but pairing that with the literal alert-summary
+  company string is not, so the dual check has zero false-positive risk against
+  a genuine posting. Checked NCWorks and LinkedIn for the same class of bug
+  (a digest parser walking all headings/blocks without distinguishing a
+  summary line from real listings) — neither is vulnerable: NCWorks walks
+  structured `<td class="JOBSLISTCELLTITLE">` table cells, not headings, so a
+  summary sentence has nowhere to attach; LinkedIn's plain-text block parser
+  doesn't produce the artifact in practice either (zero instances across 668
+  real LinkedIn/NCWorks rows checked). Indeed-specific.
 - **`JD_BLOCKED_SOURCES`** (e.g. NCWorks, Indeed) get snippet-based evaluation with a
   warning tag — don't attempt a full JD fetch for them.
 - **NCWorks URL resolution keeps off-site redirects.** `_resolve_ncworks_url` follows

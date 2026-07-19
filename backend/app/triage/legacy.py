@@ -502,6 +502,24 @@ _CO_LOC_RE = re.compile(
     r"^(.+?)\s*[-–]\s*([A-Za-z][A-Za-z '\-]+,\s+[A-Z]{2})\s*$"
 )
 
+# Indeed's own digest headline ("N new <query> jobs in <location>") is wrapped
+# in an <h2> right alongside the real job-card headlines, so a naive h2 walk
+# picks it up as if it were a listing — the title looks job-shaped ("...jobs
+# in Durham, NC") and there's no real company/JD behind it, just the alert's
+# own summary sentence (company td resolves to the "These jobs match your
+# saved job alert…" boilerplate). Matched on BOTH signals together, never
+# title alone, so a genuine, unusually-phrased job title is never at risk.
+_DIGEST_HEADER_TITLE_RE = re.compile(r"^\d+\s+new\b.*\bjobs?\b.*\bin\b", re.IGNORECASE)
+_DIGEST_HEADER_COMPANY_PREFIX = "these jobs match your saved job alert"
+
+
+def _is_digest_header(title: str, company: str) -> bool:
+    """True if this h2 is Indeed's own alert-summary headline, not a real job
+    listing. See CLAUDE.md's Indeed digest-header gotcha."""
+    if not _DIGEST_HEADER_TITLE_RE.match((title or "").strip()):
+        return False
+    return (company or "").strip().lower().startswith(_DIGEST_HEADER_COMPANY_PREFIX)
+
 
 def _parse_indeed_jobs_h2(html_content: str, email_date: str) -> list[dict]:
     """
@@ -612,6 +630,11 @@ def _parse_indeed_jobs_h2(html_content: str, email_date: str) -> list[dict]:
 
         if not href and not company and company == "Unknown":
             continue  # nothing useful extracted
+
+        if _is_digest_header(title, company):
+            if DEBUG:
+                log.info("[debug] _parse_indeed_jobs_h2: skipping digest-header artifact: %r", title)
+            continue
 
         jobs.append({
             "title":    title,
