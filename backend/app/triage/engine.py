@@ -264,7 +264,7 @@ def _process_and_persist(session: Session, all_jobs: list, run: Run,
 
     # --- Claude evaluation (demotes poor-fit Pursue -> Review) ---
     if not skip_claude:
-        pursue, review = legacy.claude_evaluate_jobs(pursue, review)
+        pursue, review = legacy.claude_evaluate_jobs(pursue, review, session=session)
 
     # Pursue should mean "JD-verified fit". Roles Claude could only judge from
     # the email snippet (JD unfetchable, ⚠) are moved to Review for manual

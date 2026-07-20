@@ -2320,9 +2320,43 @@ renderAll();
 </html>"""
 
 
+# Phrases Claude's own reason text uses when the JD text it was given wasn't
+# real job content. The evaluate_job prompt instructs "set is_fit=true and
+# confidence=low" for this case, but live verification (see CLAUDE.md-style
+# evidence gathering, three real fixtures) showed Claude doesn't reliably
+# follow that: on a LinkedIn login-wall page it still returned is_fit=False,
+# confidence=high, having found a *title*-based seniority signal to justify
+# the rejection — while its reason text still plainly said "content
+# unavailable ... navigation/UI markup, no actual JD text". So this gates on
+# the reason text alone, not on is_fit/confidence, which real responses don't
+# reliably encode this signal into.
+_THIN_JD_VERDICT_MARKERS = (
+    "content unavailable", "jd unavailable", "not available", "no actual jd",
+    "no actual job description", "no actual role requirements",
+    "no job description", "navigation/ui markup", "navigation markup",
+    "only navigation", "ui markup", "unable to assess", "cannot assess",
+    "cannot evaluate", "cannot verify", "insufficient information",
+    "no real job content", "could not be fetched", "couldn't be fetched",
+)
+
+
+def _claude_flagged_thin_jd(reason: str) -> bool:
+    """True when Claude's own evaluation verdict — not the separate
+    jd_resolver._is_thin_jd length/stub-marker pre-filter — indicates the JD
+    text it was given wasn't real job content. This catches what the
+    pre-filter misses: e.g. a Tavily result that landed on a LinkedIn
+    login-wall page, which is long (often hits the 8000-char cap) so the
+    length check never fires, but is entirely cookie/sign-in chrome that
+    Claude itself recognizes as not a real posting — in its reason text, even
+    when is_fit/confidence don't reflect that (see marker list comment)."""
+    reason_l = (reason or "").lower()
+    return any(m in reason_l for m in _THIN_JD_VERDICT_MARKERS)
+
+
 def claude_evaluate_jobs(
     pursue: list[tuple[dict, str]],
     review: list[tuple[dict, str]],
+    session=None,
 ) -> tuple[list, list]:
     """Use Claude API to evaluate Pursue jobs for experience fit.
 
@@ -2333,6 +2367,11 @@ def claude_evaluate_jobs(
        grad with ~1 year academic/capstone experience
     4. Jobs flagged as requiring significantly more experience are moved to Review
        with Claude's explanation stored as the reason
+
+    ``session`` (a SQLModel Session, optional) lets the thin-JD verdict retry
+    below (see ``_claude_flagged_thin_jd``) cache a successful SerpApi refetch
+    into JdCache so future runs don't pay for the same lookup twice. Passing
+    None still works — the retry just won't persist its result.
 
     Cost: ~$0.02-0.03/day at typical Pursue volumes.
     """
@@ -2408,7 +2447,7 @@ def claude_evaluate_jobs(
     def evaluate_job(job: dict) -> tuple:
         """Ask Claude if this job is realistic for Aidan. Returns
         (is_fit, reason, years_required, jd_substantive, highlight,
-        location_hard_blocker, hard_blocker)."""
+        location_hard_blocker, hard_blocker, confidence)."""
         # Prefer JD text resolved upstream (e.g. via Tavily for blocked sources);
         # fall back to the direct fetch when none was supplied.
         jd_text = job.get("jd_text") or fetch_jd_text(job.get("url", ""))
@@ -2464,7 +2503,7 @@ Return ONLY valid JSON, no other text."""
             if not api_key:
                 if DEBUG:
                     log.info("[debug] claude_eval: ANTHROPIC_API_KEY not set, skipping evaluation")
-                return True, "", None, jd_substantive, "", False, False
+                return True, "", None, jd_substantive, "", False, False, "low"
 
             payload = json.dumps({
                 "model": "claude-haiku-4-5-20251001",
@@ -2519,13 +2558,13 @@ Return ONLY valid JSON, no other text."""
                 log.info("[debug] claude_eval: '%s' -> fit=%s conf=%s reason=%s highlight=%s location_hard_blocker=%s hard_blocker=%s",
                          job["title"], is_fit, confidence, reason, highlight, location_hard_blocker, hard_blocker)
 
-            return is_fit, reason, years, jd_substantive, highlight, location_hard_blocker, hard_blocker
+            return is_fit, reason, years, jd_substantive, highlight, location_hard_blocker, hard_blocker, confidence
 
         except Exception as e:
             if DEBUG:
                 log.info("[debug] claude_eval error for '%s': %s", job["title"], e)
             # On error, default to keeping in Pursue — never auto-skip on a parse/API failure.
-            return True, "", None, jd_substantive, "", False, False
+            return True, "", None, jd_substantive, "", False, False, "low"
 
     new_pursue = []
     new_review = list(review)  # start with existing review items
@@ -2535,13 +2574,41 @@ Return ONLY valid JSON, no other text."""
     # but we tag the result to flag that the full JD was unavailable.
     JD_BLOCKED_SOURCES = {"NCWorks", "Indeed"}
 
+    # Separate, smaller budget from the pre-filter's SERPAPI_MAX_LOOKUPS —
+    # this only fires when Claude's own verdict flagged the JD as thin, which
+    # should be rare relative to the pre-filter's blocked-source sweep.
+    serp_retry_budget = int(os.environ.get("SERPAPI_VERDICT_RETRY_MAX", "15"))
+    serp_retry_used = 0
+
     for job, existing_reason in pursue:
         source = job.get("source", "")
         # A blocked source whose JD we resolved upstream (Tavily) is no longer
         # snippet-only — evaluate it normally instead of tagging it ⚠.
         jd_blocked = source in JD_BLOCKED_SOURCES and not job.get("jd_text")
 
-        is_fit, claude_reason, years_req, jd_substantive, highlight, location_hard_blocker, hard_blocker = evaluate_job(job)
+        is_fit, claude_reason, years_req, jd_substantive, highlight, location_hard_blocker, hard_blocker, confidence = evaluate_job(job)
+
+        # Claude's own verdict — not just the jd_resolver pre-filter — says the
+        # JD text it was given wasn't real job content. Retry via SerpApi's
+        # google_jobs engine using that verdict, then re-evaluate once with
+        # whatever text comes back. Reuses the judgment already being paid
+        # for instead of relying solely on a blind length/marker pre-check.
+        if _claude_flagged_thin_jd(claude_reason) and serp_retry_used < serp_retry_budget:
+            from .jd_resolver import retry_thin_verdict
+            new_text, attempted = retry_thin_verdict(session, job, serp_retry_budget - serp_retry_used)
+            if attempted:
+                serp_retry_used += 1
+            if new_text:
+                job["jd_text"] = new_text
+                log.info("SerpApi verdict-retry found better JD for '%s' (%s) — re-evaluating",
+                         job.get("title", "?"), job.get("company", "?"))
+                (is_fit, claude_reason, years_req, jd_substantive, highlight,
+                 location_hard_blocker, hard_blocker, confidence) = evaluate_job(job)
+                # Retried against real content now — no longer snippet-only.
+                jd_blocked = False
+            else:
+                log.info("SerpApi verdict-retry found nothing better for '%s' (%s) — keeping original verdict",
+                         job.get("title", "?"), job.get("company", "?"))
 
         # An experience-gap demotion is routed to the Stretch tier (tagged
         # "Stretch:") rather than Review, so Review stays for other mismatches.

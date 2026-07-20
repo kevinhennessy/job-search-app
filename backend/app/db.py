@@ -1,8 +1,14 @@
 """SQLite engine, session factory, and schema init."""
 
-from sqlmodel import SQLModel, Session, create_engine
+from datetime import datetime, timedelta
+
+from sqlmodel import SQLModel, Session, create_engine, select
 
 from . import settings
+
+# A real run finishes in seconds to low minutes; nothing legitimate stays
+# "running" this long, so anything older is an orphan, not a live run.
+STALE_RUN_THRESHOLD_MINUTES = 30
 
 # check_same_thread=False so the engine can be used across FastAPI's threadpool
 # and background tasks. SQLite + a single local user handles this fine.
@@ -65,6 +71,41 @@ def _migrate() -> None:
                     # perfect for old rows but is far better than leaving them all
                     # mislabeled "triage".
                     conn.execute(text("UPDATE run SET run_type='scan' WHERE n_emails=0"))
+
+
+def sweep_stale_runs() -> int:
+    """Auto-recover Run rows orphaned by a backend crash mid-run.
+
+    See CLAUDE.md's run #33 incident: the process died between marking a run
+    "running" and ever reaching the except-block status update, leaving it
+    stuck at "running" forever with nothing to flip it back. There's no
+    queue/worker layer here (FastAPI BackgroundTasks, in-process, no
+    retry/resume — see CLAUDE.md's deployment notes), so this startup sweep
+    is the recovery path: any row still "running" after
+    STALE_RUN_THRESHOLD_MINUTES gets marked "error" with a message that
+    identifies it as an auto-recovery, not a live crash diagnosis. Runs once
+    at startup only — a live run's own process wouldn't be restarting out
+    from under itself mid-run. Returns the number of rows recovered.
+    """
+    from .models import Run
+
+    threshold = datetime.utcnow() - timedelta(minutes=STALE_RUN_THRESHOLD_MINUTES)
+    with Session(engine) as session:
+        stale = session.exec(
+            select(Run).where(Run.status == "running", Run.started_at < threshold)
+        ).all()
+        for run in stale:
+            run.status = "error"
+            run.error = (
+                f"Auto-recovered at startup: stuck in 'running' for over "
+                f"{STALE_RUN_THRESHOLD_MINUTES} minutes, almost certainly an "
+                f"orphaned run from a backend crash rather than a live failure."
+            )
+            run.finished_at = datetime.utcnow()
+            session.add(run)
+        if stale:
+            session.commit()
+        return len(stale)
 
 
 def get_session():

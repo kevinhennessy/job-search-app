@@ -143,6 +143,54 @@ def _is_thin_jd(text: Optional[str]) -> bool:
     return hits >= 2 and len(text) < 3000
 
 
+def retry_thin_verdict(session: Optional[Session], job: dict, budget_remaining: int) -> tuple[Optional[str], bool]:
+    """SerpApi retry triggered by Claude's own evaluation verdict, not the
+    pre-filter above. Called from evaluate_job() (legacy.py) after Claude has
+    judged the JD text it was given as thin/unavailable ("is_fit=true,
+    confidence=low" — the case the prompt asks it to return for
+    navigation-only/unavailable content). This catches what the length-based
+    ``_is_thin_jd`` pre-filter misses: e.g. a Tavily result that landed on a
+    LinkedIn login-wall page, which is long (often hits the 8000-char cap)
+    but is entirely cookie/sign-in chrome, not real JD prose.
+
+    Returns (new_text_or_None, attempted) — ``attempted`` is True whenever a
+    SerpApi call was actually made (so the caller can track its own budget),
+    False when skipped for lack of a key or budget. ``new_text`` is None both
+    when the call failed AND when it succeeded but the result was itself thin
+    (e.g. a genuine login-wall posting with no better source anywhere) — the
+    caller should leave the job's existing jd_text/verdict alone in that case.
+    """
+    serpapi_key = os.environ.get("SERPAPI_API_KEY", "").strip()
+    if not serpapi_key or budget_remaining <= 0:
+        return None, False
+
+    text, url = _serpapi_jobs(job, serpapi_key)
+    if not text or _is_thin_jd(text):
+        return None, True
+
+    if url:
+        job["jd_url"] = url
+
+    if session is not None:
+        from .legacy import _job_id
+        sid = _job_id(job)
+        capped_text = text[:_MAX_JD_CHARS]
+        cached = session.get(JdCache, sid)
+        if cached is not None:
+            cached.jd_text = capped_text
+            cached.jd_url = url or cached.jd_url
+            cached.found = True
+            session.add(cached)
+        else:
+            session.add(JdCache(
+                stable_id=sid, jd_text=capped_text, jd_url=(url or ""),
+                found=True, fetched_at=datetime.utcnow(),
+            ))
+        session.commit()
+
+    return text[:_MAX_JD_CHARS], True
+
+
 def resolve_for_jobs(session: Session, jobs: list, max_lookups: int) -> int:
     """
     Populate ``job['jd_text']`` for blocked-source jobs in ``jobs`` (a list of

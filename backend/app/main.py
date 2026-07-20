@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import settings
 from .api import fit, jobs, runs
-from .db import init_db
+from .db import init_db, sweep_stale_runs
 
 app = FastAPI(title="Job Search Triage", version="0.1.0")
 
@@ -65,6 +65,12 @@ _LOADED_CODE_HASH = _hash_triage_files()
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    recovered = sweep_stale_runs()
+    if recovered:
+        import logging
+        logging.getLogger("triage").warning(
+            "Startup sweep auto-recovered %d stale 'running' run row(s)", recovered
+        )
 
 
 @app.get("/api/health")
