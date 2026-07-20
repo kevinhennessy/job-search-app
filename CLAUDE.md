@@ -165,6 +165,20 @@ dependency). Keep that pattern if adding new LLM calls.
   summary sentence has nowhere to attach; LinkedIn's plain-text block parser
   doesn't produce the artifact in practice either (zero instances across 668
   real LinkedIn/NCWorks rows checked). Indeed-specific.
+- **Hard-blocker routing covers location AND general disqualifiers.** The
+  evaluator prompt's JSON schema has two boolean flags — `location_hard_blocker`
+  (relocation/residency/hybrid-outside-the-Triangle, added first) and
+  `hard_blocker` (program-specific eligibility like "must be currently
+  enrolled," staffing/contracting with an undisclosed client, clearance/
+  citizenship/license — criteria 2-4 in the prompt, added after an ABB
+  internship posting requiring current enrollment landed in Review with
+  Claude's own reasoning correctly calling it a hard blocker, but nothing in
+  the schema to act on that reasoning). Both route identically: tagged
+  `"Skip: …"` in the reason string, read by `engine._is_hard_blocker_reason`
+  (checks the prefix, not which specific flag fired) to bucket into Skipped
+  ahead of the Stretch check. If a *third* category of hard blocker shows up,
+  add another boolean to the schema rather than overloading one of the
+  existing two — keeps each flag's prompt guidance specific and auditable.
 - **`JD_BLOCKED_SOURCES`** (e.g. NCWorks, Indeed) get snippet-based evaluation with a
   warning tag — don't attempt a full JD fetch for them.
 - **NCWorks URL resolution keeps off-site redirects.** `_resolve_ncworks_url` follows

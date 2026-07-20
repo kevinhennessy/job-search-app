@@ -108,12 +108,15 @@ def _is_stretch_reason(reason: Optional[str]) -> bool:
     return bool(reason) and reason.startswith("Stretch:")
 
 
-def _is_location_hard_blocker_reason(reason: Optional[str]) -> bool:
-    """Claude tagged this demotion as a location hard blocker — relocation
-    required, non-NC residency restriction, or hybrid based outside the
-    Triangle (see candidate_profile.md's Location constraints section and
-    legacy evaluator's location_hard_blocker field). Routed to Skipped
-    rather than Review/Stretch since it's a harder disqualifier."""
+def _is_hard_blocker_reason(reason: Optional[str]) -> bool:
+    """Claude tagged this demotion as a hard blocker — either location
+    (relocation required, non-NC residency restriction, hybrid based outside
+    the Triangle; see candidate_profile.md's Location constraints section and
+    legacy evaluator's location_hard_blocker field) or general (program-
+    specific eligibility, staffing/contracting with an undisclosed client,
+    clearance/citizenship/license — legacy evaluator's hard_blocker field).
+    Routed to Skipped rather than Review/Stretch since either is a harder
+    disqualifier than an ordinary demotion."""
     return bool(reason) and reason.startswith("Skip:")
 
 
@@ -274,19 +277,20 @@ def _process_and_persist(session: Session, all_jobs: list, run: Run,
             verified_pursue.append((job, reason))
     pursue = verified_pursue
 
-    # --- route experience-gap roles into the Stretch tier, and location hard
-    #     blockers into Skipped ---
+    # --- route experience-gap roles into the Stretch tier, and hard
+    #     blockers (location or general) into Skipped ---
     # Stretch comes from two places: Claude demotions tagged "Stretch:" and
-    # the snippet-level experience gate's skips. Location hard blockers
-    # (tagged "Skip:" — relocation/residency/hybrid-outside-the-Triangle, see
-    # candidate_profile.md) are a harder disqualifier than an ordinary
-    # demotion, so they're pulled out of Review into Skipped instead of
-    # cluttering it. Everything else is unchanged.
+    # the snippet-level experience gate's skips. Hard blockers (tagged
+    # "Skip:" — location, per candidate_profile.md, OR general: eligibility,
+    # staffing/contracting with an undisclosed client, clearance/citizenship/
+    # license) are a harder disqualifier than an ordinary demotion, so they're
+    # pulled out of Review into Skipped instead of cluttering it. Everything
+    # else is unchanged.
     stretch: list = []
     review_final: list = []
     skipped_final: list = []
     for job, reason in review:
-        if _is_location_hard_blocker_reason(reason):
+        if _is_hard_blocker_reason(reason):
             skipped_final.append((job, reason))
         elif _is_stretch_reason(reason):
             stretch.append((job, reason))
@@ -373,7 +377,7 @@ def run_triage(session: Session, hours_back: Optional[int] = None,
     hours_back = settings.DEFAULT_HOURS_BACK if hours_back is None else hours_back
     skip_claude = settings.SKIP_CLAUDE_EVAL if skip_claude is None else skip_claude
 
-    run = Run(started_at=datetime.utcnow(), hours_back=hours_back, status="running")
+    run = Run(started_at=datetime.utcnow(), hours_back=hours_back, run_type="triage", status="running")
     session.add(run)
     session.commit()
     session.refresh(run)
@@ -433,7 +437,7 @@ def run_scan(session: Session, hours_back: Optional[int] = None,
     hours_back = int(os.environ.get("SCAN_HOURS_BACK", "168")) if hours_back is None else hours_back
     skip_claude = settings.SKIP_CLAUDE_EVAL if skip_claude is None else skip_claude
 
-    run = Run(started_at=datetime.utcnow(), hours_back=hours_back, status="running")
+    run = Run(started_at=datetime.utcnow(), hours_back=hours_back, run_type="scan", status="running")
     session.add(run)
     session.commit()
     session.refresh(run)
