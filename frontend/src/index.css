@@ -45,6 +45,8 @@ body {
 .header-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
 .header h1 { font-size: 1.7rem; font-weight: normal; letter-spacing: -.02em; }
 .meta { font-size: .78rem; color: var(--muted); font-family: var(--mono); margin-top: .45rem; letter-spacing: .01em; }
+.run-meta { display: flex; flex-wrap: wrap; gap: .3rem 1rem; font-size: .68rem; color: var(--muted); font-family: var(--mono); margin-top: .3rem; }
+.run-meta-stale { color: var(--review); font-weight: 600; }
 .stats { display: flex; gap: 1.75rem; margin-top: 1.15rem; }
 .stat { font-size: .72rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .stat .num { font-size: 1.5rem; display: block; font-weight: bold; letter-spacing: -.02em; text-transform: none; margin-bottom: .1rem; }

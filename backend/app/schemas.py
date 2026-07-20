@@ -75,6 +75,7 @@ class RunOut(BaseModel):
     started_at: datetime
     finished_at: Optional[datetime] = None
     hours_back: int
+    run_type: str = "triage"       # triage | scan
     status: str
     error: Optional[str] = None
     n_pursue: int

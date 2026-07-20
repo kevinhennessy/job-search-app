@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Job, daysSince } from "./lib/api";
+import { api, type Health, type Job, type Run, daysSince } from "./lib/api";
 import JobCard from "./components/JobCard";
 import FitEvaluator from "./components/FitEvaluator";
 
@@ -29,6 +29,12 @@ async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promis
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, next));
 }
 
+function formatRunTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  });
+}
+
 export default function App() {
   const [view, setView] = useState<View>("jobs");
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -41,15 +47,30 @@ export default function App() {
   const [runMsg, setRunMsg] = useState("");
   const [fitPendingIds, setFitPendingIds] = useState<Set<string>>(new Set());
   const startedFitRef = useRef<Set<string>>(new Set());
+  const [lastTriageRun, setLastTriageRun] = useState<Run | null>(null);
+  const [lastScanRun, setLastScanRun] = useState<Run | null>(null);
+  const [health, setHealth] = useState<Health | null>(null);
 
   const refresh = useCallback(async () => {
     const j = await api.jobs(true);
     setJobs(j);
   }, []);
 
+  // Last-run timestamps + backend freshness — see CLAUDE.md's "Run-coverage
+  // gaps" / "Indeed digest-header" gotchas, both of which turned out to hinge
+  // on whether the running process actually had the code you thought it did.
+  // Surfacing this so staleness is visible instead of discovered days later.
+  const refreshMeta = useCallback(async () => {
+    const [runs, h] = await Promise.all([api.runs(), api.health().catch(() => null)]);
+    setLastTriageRun(runs.find((r) => r.run_type === "triage" && r.status === "done") ?? null);
+    setLastScanRun(runs.find((r) => r.run_type === "scan" && r.status === "done") ?? null);
+    setHealth(h);
+  }, []);
+
   useEffect(() => {
     refresh().catch((e) => setRunMsg(String(e)));
-  }, [refresh]);
+    refreshMeta().catch(() => {});
+  }, [refresh, refreshMeta]);
 
   // --- buckets: pass AND closed are terminal -> archived together; applied
   //     jobs move to their own section regardless of original category; the
@@ -138,6 +159,7 @@ export default function App() {
             `/ ${latest.n_skipped} skipped from ${latest.n_emails} emails`,
           );
           refresh();
+          refreshMeta();
         }
       }, 2000);
     } catch (e) {
@@ -170,6 +192,7 @@ export default function App() {
             `/ ${latest.n_stretch} stretch / ${latest.n_skipped} skipped`,
           );
           refresh();
+          refreshMeta();
         }
       }, 2000);
     } catch (e) {
@@ -236,6 +259,15 @@ export default function App() {
           )}
         </div>
         <div className="meta">Aidan Hennessy · notes auto-save</div>
+        <div className="run-meta">
+          <span>Triage last ran: {lastTriageRun ? formatRunTime(lastTriageRun.started_at) : "never"}</span>
+          <span>Scan Portals last ran: {lastScanRun ? formatRunTime(lastScanRun.started_at) : "never"}</span>
+          {health?.stale && (
+            <span className="run-meta-stale" title="Files on disk have changed since this backend process started — restart it to pick up the latest code.">
+              ⚠ backend running stale code
+            </span>
+          )}
+        </div>
         <div className="filter-bar view-tabs">
           <button
             className={`filter-btn${view === "jobs" ? " active" : ""}`}

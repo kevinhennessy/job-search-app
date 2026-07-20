@@ -56,6 +56,7 @@ export interface Run {
   started_at: string;
   finished_at: string | null;
   hours_back: number;
+  run_type: "triage" | "scan";
   status: "running" | "done" | "error";
   error: string | null;
   n_pursue: number;
@@ -63,6 +64,14 @@ export interface Run {
   n_stretch: number;
   n_skipped: number;
   n_emails: number;
+}
+
+export interface Health {
+  ok: boolean;
+  started_at: string;
+  loaded_code_hash: string;
+  current_disk_hash: string;
+  stale: boolean;
 }
 
 export interface FitResult {
@@ -115,4 +124,6 @@ export const api = {
 
   evaluateJobFit: (id: string) =>
     fetch(`/api/jobs/${encodeURIComponent(id)}/fit-evaluate`, { method: "POST" }).then(j<Job>),
+
+  health: () => fetch("/api/health").then(j<Health>),
 };

@@ -39,7 +39,7 @@ def trigger_run(background: BackgroundTasks, hours: int | None = None,
     # Frontend should poll the runs list for the newest entry.
     return RunOut(
         id=-1, started_at=__import__("datetime").datetime.utcnow(),
-        hours_back=hours or 0, status="running",
+        hours_back=hours or 0, run_type="triage", status="running",
         n_pursue=0, n_review=0, n_skipped=0, n_emails=0,
     )
 
@@ -70,7 +70,7 @@ def trigger_scan(background: BackgroundTasks, hours: int | None = None,
     background.add_task(_scan_in_background, hours)
     return RunOut(
         id=-1, started_at=__import__("datetime").datetime.utcnow(),
-        hours_back=hours or 0, status="running",
+        hours_back=hours or 0, run_type="scan", status="running",
         n_pursue=0, n_review=0, n_skipped=0, n_emails=0,
     )
 

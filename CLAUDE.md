@@ -212,6 +212,29 @@ dependency). Keep that pattern if adding new LLM calls.
   verify the sibling actually came from the same source before trusting that
   as evidence of a single-item bug — here it was two unrelated facts, not one
   inconsistency.
+- **`--reload` can silently hang mid-restart; `WATCHFILES_FORCE_POLLING`
+  does NOT fix it.** Tested directly (2026-07-19): started uvicorn with
+  polling enabled, modified a watched file, WatchFiles correctly detected it
+  and logged "Reloading..." — but the worker process was never actually
+  replaced. Same PID, same stale `/api/health` code hash, 20+ seconds later
+  with zero progress. Polling only changes how file changes are *detected*,
+  which wasn't the broken step here; the *respawn* itself hangs regardless,
+  at least in this dev environment. Don't re-try this fix blind in a future
+  session — if `--reload` seems to have silently stopped applying changes,
+  kill the whole process tree (reloader + worker) and start fresh rather than
+  trusting an env var to unstick it. `/api/health`'s `stale` field
+  (`loaded_code_hash` vs `current_disk_hash`, the latter rehashed fresh per
+  request) is the actual safety net for catching this live instead of
+  discovering it days later — check it, don't assume reload worked.
+- **Scan Portals verified working end-to-end (2026-07-19).** After a session
+  that touched only the email-triage path (`build_query`, `_coverage_floor`,
+  the Indeed h2 parser), triggered a real portal scan to confirm it was
+  actually unaffected rather than assuming so: 54 jobs landed, correctly
+  tagged `Scanner/<company>` across 7 employers, correctly classified, visible
+  through both the DB and the live API. Worth re-verifying the same way after
+  any future change to `engine.py` or `scanner.py`, since `_process_and_persist`
+  is shared but nothing in a typical email-triage session exercises
+  `scanner.py`'s own code paths (`scan_all_portals`, `scanner_location_ok`).
 
 ---
 

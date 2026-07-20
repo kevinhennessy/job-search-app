@@ -36,6 +36,7 @@ def _migrate() -> None:
         "run": [
             ("n_stretch", "INTEGER NOT NULL DEFAULT 0"),
             ("covered_through", "TIMESTAMP"),
+            ("run_type", "TEXT NOT NULL DEFAULT 'triage'"),
         ],
         "jdcache": [("jd_url", "TEXT NOT NULL DEFAULT ''")],
         "job": [("last_alert_date", "TIMESTAMP")],
@@ -53,6 +54,17 @@ def _migrate() -> None:
                 except OperationalError as exc:
                     if "duplicate column" not in str(exc).lower():
                         raise
+                    continue  # already added by a racing startup — no backfill needed either
+                if table == "run" and name == "run_type":
+                    # One-time best-effort backfill for rows that predate this column,
+                    # only reachable on the ALTER that actually just added it (not on
+                    # every later startup, or a legitimate triage run with n_emails=0
+                    # — e.g. a narrow coverage-gap window with nothing new — would get
+                    # wrongly flipped to "scan" on every subsequent restart). Portal
+                    # scans always set n_emails=0 (see engine.run_scan); this isn't
+                    # perfect for old rows but is far better than leaving them all
+                    # mislabeled "triage".
+                    conn.execute(text("UPDATE run SET run_type='scan' WHERE n_emails=0"))
 
 
 def get_session():

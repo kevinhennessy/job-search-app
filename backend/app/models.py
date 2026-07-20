@@ -59,6 +59,7 @@ class Run(SQLModel, table=True):
     started_at: datetime = Field(default_factory=datetime.utcnow)
     finished_at: Optional[datetime] = None
     hours_back: int = 24
+    run_type: str = "triage"           # triage (email) | scan (portals)
     status: str = "running"            # running | done | error
     error: Optional[str] = None
     n_pursue: int = 0
